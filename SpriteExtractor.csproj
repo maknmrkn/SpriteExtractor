@@ -3,7 +3,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
-    <!-- حذف تمام تنظیمات اضافی -->
+    <GenerateUserSecrets>true</GenerateUserSecrets>
+    
   </PropertyGroup>
   
   <ItemGroup>

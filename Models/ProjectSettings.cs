@@ -1,3 +1,4 @@
+using System;
 using System.Drawing;
 
 namespace SpriteExtractor.Models
@@ -8,7 +9,7 @@ namespace SpriteExtractor.Models
         public string OutputDirectory { get; set; } = "./Output/";
         public bool AutoDetectEnabled { get; set; } = false;
         
-        // 🔧 این Property جدید برای رنگ هایلایت
+        // 🔧 این Property جدید برای رنگ هایلایت - حتماً باید وجود داشته باشد
         public Color HighlightColor { get; set; } = Color.Orange;
     }
 }

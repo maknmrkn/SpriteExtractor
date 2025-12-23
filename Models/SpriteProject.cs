@@ -23,10 +23,5 @@ namespace SpriteExtractor.Models
         public override string ToString() => $"{Name} ({Bounds.X}, {Bounds.Y}, {Bounds.Width}, {Bounds.Height})";
     }
 
-    public class ProjectSettings
-    {
-        public string OutputFormat { get; set; } = "PNG";
-        public string OutputDirectory { get; set; } = "./Output/";
-        public bool AutoDetectEnabled { get; set; } = false;
-    }
+
 }

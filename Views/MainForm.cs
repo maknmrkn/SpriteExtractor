@@ -30,6 +30,9 @@ namespace SpriteExtractor.Views
         SpriteThumbnails = new SpriteImageList();
         SpriteListView.SmallImageList = SpriteThumbnails.ImageList;
         SpriteListView.SelectedIndexChanged += OnListViewSelectionChanged;
+        SpriteListView.MouseDoubleClick += OnListViewDoubleClick;
+
+        
         }
         
         private void InitializeComponent()
@@ -42,6 +45,7 @@ namespace SpriteExtractor.Views
             MainMenu = new MenuStrip();
             CreateMenuItems();
             this.Controls.Add(MainMenu);
+           
             
             // ایجاد نوار ابزار
             Toolbar = new ToolStrip();
@@ -57,6 +61,7 @@ namespace SpriteExtractor.Views
             StatusBar = new StatusStrip { Dock = DockStyle.Bottom };
             StatusBar.Items.Add("Ready");
             this.Controls.Add(StatusBar);
+            
         }
         
         private void CreateMenuItems()
@@ -76,11 +81,65 @@ namespace SpriteExtractor.Views
             editMenu.DropDownItems.Add("-");
             editMenu.DropDownItems.Add("Delete Sprite", null, (s, e) => _presenter.DeleteSelectedSprite());
             
-            var viewMenu = new ToolStripMenuItem("View");
+            
+                var viewMenu = new ToolStripMenuItem("View");
+    
+            // زیرمنوی انتخاب رنگ هایلایت
+            var highlightColorMenu = new ToolStripMenuItem("Highlight Color");
+            
+            // رنگ‌های پیش‌فرض
+            var colors = new Dictionary<string, Color>
+            {
+                {"Orange", Color.Orange},
+                {"Blue", Color.Blue},
+                {"Red", Color.Red},
+                {"Green", Color.Green},
+                {"Purple", Color.Purple},
+                {"Yellow", Color.Yellow}
+            };
+            
+            foreach (var color in colors)
+            {
+                var item = new ToolStripMenuItem(color.Key, null, (s, e) => 
+                {
+                    _presenter?.SetHighlightColor(color.Value);
+                    UpdateHighlightColorMenu(highlightColorMenu, color.Key);
+                });
+                
+                highlightColorMenu.DropDownItems.Add(item);
+            }
+            
+            // جداکننده
+            highlightColorMenu.DropDownItems.Add(new ToolStripSeparator());
+            
+            // گزینه انتخاب رنگ دلخواه
+        // گزینه انتخاب رنگ دلخواه (نسخه ساده‌شده)
+        var customColorItem = new ToolStripMenuItem("Custom Color...", null, (s, e) => 
+        {
+            using var colorDialog = new ColorDialog
+            {
+                Color = _presenter?.GetHighlightColor() ?? Color.Orange,
+                FullOpen = true
+            };
+            
+            if (colorDialog.ShowDialog() == DialogResult.OK)
+            {
+                _presenter?.SetHighlightColor(colorDialog.Color);
+                
+                // 🔧 فقط نام را به "Custom" تغییر دهید
+                 UpdateHighlightColorMenu(highlightColorMenu, "Custom");
+            }
+        });
+            
+            highlightColorMenu.DropDownItems.Add(customColorItem);
+            
+            viewMenu.DropDownItems.Add(highlightColorMenu);
+            MainMenu.Items.Add(viewMenu);
             var toolsMenu = new ToolStripMenuItem("Tools");
             toolsMenu.DropDownItems.Add("Auto-Detect Sprites", null, (s, e) => _presenter.AutoDetect());
             
             MainMenu.Items.AddRange(new[] { fileMenu, editMenu, viewMenu, toolsMenu });
+            UpdateHighlightColorMenu(highlightColorMenu, "Orange");
         }
         
         private void CreateToolbarItems()
@@ -186,5 +245,38 @@ namespace SpriteExtractor.Views
                 _presenter.OnListViewItemSelected(sprite);
             }
         }
+
+        // متد کمکی برای آپدیت تیک کنار رنگ انتخاب‌شده
+            private void UpdateHighlightColorMenu(ToolStripMenuItem menu, string selectedColorName)
+            {
+                foreach (var item in menu.DropDownItems)
+                {
+                    // 🔧 فقط آیتم‌هایی که ToolStripMenuItem هستند را بررسی کن
+                    if (item is ToolStripMenuItem menuItem)
+                    {
+                        // آیتم‌هایی که متن آنها "Custom Color..." نیست را چک کن
+                        if (menuItem.Text != "Custom Color...")
+                        {
+                            menuItem.Checked = (menuItem.Text == selectedColorName);
+                        }
+                    }
+                    // ToolStripSeparator را نادیده بگیر
+                }
+            }
+
+        private void OnListViewDoubleClick(object sender, MouseEventArgs e)
+        {
+            var item = SpriteListView.GetItemAt(e.X, e.Y);
+            if (item != null)
+            {
+                var sprite = item.Tag as SpriteDefinition;
+                _presenter?.FocusOnSprite(sprite);
+                
+                // اسکرول خودکار به موقعیت اسپرایت در پنل
+                // (نیاز به محاسبات Viewport دارد)
+            }
+        }
+
+      
     }
 }

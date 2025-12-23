@@ -535,7 +535,20 @@ namespace SpriteExtractor.Presenters
             }
         }
 
-           
+        public void SetHighlightColor(Color color)
+            {
+                _project.Settings.HighlightColor = color;
+                _view.ImagePanel.Invalidate(); // رندر مجدد برای اعمال رنگ جدید
+                
+                // ذخیره در تنظیمات کاربر (اختیاری)
+                //Properties.Settings.Default.HighlightColor = color;
+                //Properties.Settings.Default.Save();
+            }
+
+        public Color GetHighlightColor()
+            {
+                return _project.Settings.HighlightColor;
+            }
 
         private void OnImagePanelPaint(object sender, PaintEventArgs e)
         {
@@ -601,8 +614,10 @@ namespace SpriteExtractor.Presenters
             var visibleSprites = _project.Sprites.Where(s => s.IsVisible).ToList();
             foreach (var sprite in visibleSprites)
             {
-                // انتخاب رنگ بر اساس اینکه آیا این اسپرایت انتخاب شده یا نه
-                Color borderColor = (sprite == _selectedSprite) ? Color.Blue : Color.Lime;
+                // 🔧 استفاده از رنگ هایلایت از تنظیمات پروژه
+                Color borderColor = (sprite == _selectedSprite) ? 
+                    _project.Settings.HighlightColor : Color.Lime;
+                
                 float borderWidth = (sprite == _selectedSprite) ? 2.5f : 1.5f;
                 
                 using var pen = new Pen(borderColor, borderWidth);
@@ -778,6 +793,23 @@ namespace SpriteExtractor.Presenters
                 {
                     UpdateSelectedSprite(sprite);
                     _view.ImagePanel.Invalidate(); // رندر مجدد برای هایلایت
+                }
+            }
+
+            public void FocusOnSprite(SpriteDefinition sprite)
+            {
+                if (sprite != null && sprite != _selectedSprite)
+                {
+                    // از متد موجود UpdateSelectedSprite استفاده می‌کنیم
+                    UpdateSelectedSprite(sprite);
+                    
+                    // رندر مجدد برای اعمال هایلایت
+                    _view.ImagePanel.Invalidate();
+                    
+                    // نمایش پیام وضعیت
+                    _view.UpdateStatus($"Focus on: {sprite.Name} (Double-click)");
+                    
+                    // TODO: در آینده می‌توانیم اسکرول خودکار به موقعیت اسپرایت اضافه کنیم
                 }
             }
 
