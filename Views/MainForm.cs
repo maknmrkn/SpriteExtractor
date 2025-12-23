@@ -276,6 +276,12 @@ namespace SpriteExtractor.Views
                 // (نیاز به محاسبات Viewport دارد)
             }
         }
+                // در MainForm، رویداد FormClosing را هندل کنید
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _presenter?.Cleanup();
+            base.OnFormClosing(e);
+        }
 
       
     }

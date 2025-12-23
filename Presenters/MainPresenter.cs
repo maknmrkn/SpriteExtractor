@@ -33,6 +33,7 @@ namespace SpriteExtractor.Presenters
         private System.Windows.Forms.Timer _propertyChangeTimer;
         private Rectangle _lastKnownBounds = Rectangle.Empty;
         private bool _isPropertyGridMonitoring = false;
+        private Bitmap _loadedBitmap;
                 
         public MainPresenter(MainForm view)
         {
@@ -150,44 +151,65 @@ namespace SpriteExtractor.Presenters
             }
 
         // عملیات فایل - نسخه اصلاح شده بدون فریز
-        public async void OpenImage()
-        {
-            // ابتدا دیالوگ را نشان بده (این در UI Thread اجرا می‌شود)
-            using var dialog = new OpenFileDialog
+            public async void OpenImage()
             {
-                Filter = "Image Files|*.png;*.jpg;*.bmp;*.gif|All Files|*.*",
-                Title = "Select Sprite Sheet Image"
-            };
-            
-            var dialogResult = dialog.ShowDialog();
-            if (dialogResult != DialogResult.OK) return;
-            
-            try
-            {
-                _view.UpdateStatus("در حال بارگذاری تصویر...");
-                
-                // بارگذاری تصویر در Background برای جلوگیری از فریز
-                await Task.Run(() =>
+                using var dialog = new OpenFileDialog
                 {
-                    _project.SourceImagePath = dialog.FileName;
-                    _project.Sprites.Clear();
-                });
+                    Filter = "PNG Images|*.png|JPEG Images|*.jpg;*.jpeg|All Files|*.*",
+                    Title = "Select Sprite Sheet Image"
+                };
                 
-                // آپدیت UI در Main Thread
-                _view.UpdateSpriteList(_project.Sprites);
-                UpdateAllThumbnails(); // 📌 ساخت Thumbnail برای همه اسپرایت‌ها
-                _view.ImagePanel.Invalidate();
-                
-                _view.UpdateStatus($"بارگذاری شد: {Path.GetFileName(dialog.FileName)}");
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        // 🔧 تصویر قبلی را پاک کن
+                        _loadedBitmap?.Dispose();
+                        
+                        // 🔧 بارگذاری تصویر با حفظ Alpha (شفافیت)
+                        _loadedBitmap = LoadImageWithTransparency(dialog.FileName);
+                        
+                        _project.SourceImagePath = dialog.FileName;
+                        _project.Sprites.Clear();
+                        
+                        _view.UpdateStatus($"Loaded: {Path.GetFileName(dialog.FileName)}");
+                        _view.ImagePanel.Invalidate();
+                        
+                        UpdateAllThumbnails();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error loading image: {ex.Message}", "Error", 
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
             }
-            catch (Exception ex)
+
+            // 🔧 متد جدید برای بارگذاری تصویر با حفظ شفافیت
+            private Bitmap LoadImageWithTransparency(string filePath)
             {
-                MessageBox.Show($"خطا در بارگذاری تصویر: {ex.Message}", "خطا", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                _view.UpdateStatus("خطا در بارگذاری تصویر");
+                // بارگذاری اولیه
+                using var original = new Bitmap(filePath);
+                
+                // ایجاد Bitmap جدید با فرمت 32bppArgb (شامل Alpha channel)
+                var bitmap = new Bitmap(original.Width, original.Height, 
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                
+                using (var g = Graphics.FromImage(bitmap))
+                {
+                    // 🔧 مهم: پس‌زمینه را transparent کنیم
+                    g.Clear(Color.Transparent);
+                    
+                    // 🔧 رسم تصویر با تنظیمات حفظ کیفیت
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    
+                    // رسم تصویر اصلی
+                    g.DrawImage(original, 0, 0, original.Width, original.Height);
+                }
+                
+                return bitmap;
             }
-            
-        }
         
         public void SaveProject()
         {
@@ -354,6 +376,13 @@ namespace SpriteExtractor.Presenters
                 
             private void OnImagePanelMouseDown(object sender, MouseEventArgs e)
         {
+               // 🔧 اگر ابزار rectangle است اما تصویری بارگذاری نشده، برگرد
+            if (_currentTool == "rectangle" && string.IsNullOrEmpty(_project.SourceImagePath))
+            {
+                MessageBox.Show("Please load an image first.", "Info", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             _lastMousePosition = e.Location;
             
             if (_currentTool == "rectangle")
@@ -552,7 +581,23 @@ namespace SpriteExtractor.Presenters
 
         private void OnImagePanelPaint(object sender, PaintEventArgs e)
         {
-            var g = e.Graphics;
+                var g = e.Graphics;
+    
+                // 🔧 پس‌زمینه پنل (برای دیدن شفافیت)
+                using (var bgBrush = new SolidBrush(Color.DarkGray))
+                {
+                    g.FillRectangle(bgBrush, _view.ImagePanel.ClientRectangle);
+                }
+                
+                // 🔧 اگر تصویر بارگذاری شده، آن را رسم کن
+                if (_loadedBitmap != null)
+                {
+                    // 🔧 حفظ تنظیمات کیفیت
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                    
+                    g.DrawImage(_loadedBitmap, 0, 0);
+                }
             
             // اگر تصویری بارگذاری شده، آن را رسم کن
             if (!string.IsNullOrEmpty(_project.SourceImagePath) && File.Exists(_project.SourceImagePath))
@@ -811,6 +856,12 @@ namespace SpriteExtractor.Presenters
                     
                     // TODO: در آینده می‌توانیم اسکرول خودکار به موقعیت اسپرایت اضافه کنیم
                 }
+            }
+            // در MainPresenter، متدی برای پاکسازی اضافه کنید
+            public void Cleanup()
+            {
+                _loadedBitmap?.Dispose();
+                _loadedBitmap = null;
             }
 
     }
