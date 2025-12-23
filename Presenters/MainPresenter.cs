@@ -29,16 +29,41 @@ namespace SpriteExtractor.Presenters
         private SpriteDefinition _selectedSprite = null;
         private ResizeHandle _activeResizeHandle = ResizeHandle.None;
         private Point _lastMousePosition;
-        
+        // در بالای کلاس MainPresenter، بعد از متغیرهای دیگر:
+        private System.Windows.Forms.Timer _propertyChangeTimer;
+        private Rectangle _lastKnownBounds = Rectangle.Empty;
+        private bool _isPropertyGridMonitoring = false;
+                
         public MainPresenter(MainForm view)
         {
             _view = view;
             _project = new SpriteProject();
             
             SetupEventHandlers();
+            SetupPropertyGridTimer(); // این خط را اضافه کنید
             
         }
-        
+
+        private void SetupPropertyGridTimer()
+        {
+                _propertyChangeTimer = new System.Windows.Forms.Timer();
+                 _propertyChangeTimer.Interval = 50; // 50 میلی‌ثانیه
+                 _propertyChangeTimer.Tick += OnPropertyGridTimerTick;
+        }
+
+            private void OnPropertyGridTimerTick(object sender, EventArgs e)
+            {
+                if (_selectedSprite == null || !_isPropertyGridMonitoring) return;
+                
+                // مقایسه Bounds فعلی با آخرین وضعیت ذخیره‌شده
+                if (_selectedSprite.Bounds != _lastKnownBounds)
+                {
+                    _lastKnownBounds = _selectedSprite.Bounds;
+                    _view.ImagePanel.Invalidate();
+                    UpdateListViewForSprite(_selectedSprite);
+                }
+            }
+
         private void SetupEventHandlers()
         {
             _view.ImagePanel.MouseDown += OnImagePanelMouseDown;
@@ -46,10 +71,22 @@ namespace SpriteExtractor.Presenters
             _view.ImagePanel.MouseUp += OnImagePanelMouseUp;
             _view.ImagePanel.Paint += OnImagePanelPaint;
               // 🔧 این خط برای Two-Way Binding ضروری است:
-             //_view.PropertyGrid.PropertyValueChanged += OnPropertyGridValueChanged;
+            // _view.PropertyGrid.PropertyValueChanged += OnPropertyGridValueChanged;
+             _view.PropertyGrid.SelectedGridItemChanged += OnPropertyGridItemChanged;
+             
         }
 
-            private void OnPropertyGridValueChanged(object s, PropertyValueChangedEventArgs e)
+        private void OnPropertyGridItemChanged(object sender, SelectedGridItemChangedEventArgs e)
+        {
+            if (_selectedSprite == null) return;
+            
+            // این متد با هر تغییر انتخاب (حتی تغییر بین X, Y, Width, Height) فراخوانی می‌شود
+            // می‌توانیم هر بار پنل را رفرش کنیم تا تغییرات نمایش داده شوند
+            _view.ImagePanel.Invalidate();
+            UpdateListViewForSprite(_selectedSprite);
+        }
+
+        private void OnPropertyGridValueChanged(object s, PropertyValueChangedEventArgs e)
             {
                 if (_selectedSprite == null) return;
                 
@@ -70,6 +107,28 @@ namespace SpriteExtractor.Presenters
                     UpdateListViewForSprite(_selectedSprite);
                     _view.UpdateStatus($"Size changed to {_selectedSprite.Bounds.Width}x{_selectedSprite.Bounds.Height}");
                 }
+            }
+            // این متد را به MainPresenter اضافه کنید
+            private void UpdateSelectedSprite(SpriteDefinition sprite)
+            {
+                // تایمر قبلی را متوقف کن
+                _propertyChangeTimer.Stop();
+                _isPropertyGridMonitoring = false;
+                
+                _selectedSprite = sprite;
+                
+                if (_selectedSprite != null)
+                {
+                    // ذخیره وضعیت اولیه
+                    _lastKnownBounds = _selectedSprite.Bounds;
+                    _isPropertyGridMonitoring = true;
+                    
+                    // شروع مانیتورینگ
+                    _propertyChangeTimer.Start();
+                }
+                
+                _view.PropertyGrid.SelectedObject = _selectedSprite;
+                UpdateListViewSelection();
             }
 
         // عملیات فایل - نسخه اصلاح شده بدون فریز
@@ -182,6 +241,8 @@ namespace SpriteExtractor.Presenters
                     _project.Sprites.Remove(sprite);
                     _view.UpdateSpriteList(_project.Sprites);
                     _view.ImagePanel.Invalidate();
+                    // 🔥 فقط این یک خط را اضافه کنید:
+                      UpdateSelectedSprite(null); // این خط جدید است
                 }
             }
         }
@@ -284,7 +345,7 @@ namespace SpriteExtractor.Presenters
                 _currentSelectionMode = SelectionMode.Drawing;
                 _selectedSprite = null;
             }
-            else if (_currentTool == "select")
+             else if (_currentTool == "select")
             {
                 // ابتدا بررسی کن آیا روی دسته‌های Resize کلیک شده
                 if (_selectedSprite != null)
@@ -303,18 +364,17 @@ namespace SpriteExtractor.Presenters
                 var clickedSprite = HitTestSprites(e.Location);
                 
                 if (clickedSprite != null)
-                {
-                    _selectedSprite = clickedSprite;
-                    _currentSelectionMode = SelectionMode.Moving;
-                    _view.PropertyGrid.SelectedObject = _selectedSprite;
-                    UpdateListViewSelection();
-                }
+                        {
+                            // ✅ این خط تغییر کرد:
+                            UpdateSelectedSprite(clickedSprite);
+                            _currentSelectionMode = SelectionMode.Moving;
+                        }
                 else
-                {
-                    _selectedSprite = null;
-                    _currentSelectionMode = SelectionMode.None;
-                    _view.PropertyGrid.SelectedObject = null;
-                }
+                        {
+                            // ✅ این خط تغییر کرد:
+                            UpdateSelectedSprite(null);
+                            _currentSelectionMode = SelectionMode.None;
+                        }
                 
                 _view.ImagePanel.Invalidate();
             }
