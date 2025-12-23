@@ -41,8 +41,88 @@ namespace SpriteExtractor.Presenters
             
             SetupEventHandlers();
             SetupPropertyGridTimer(); // این خط را اضافه کنید
-            
+            SetupListViewEvents(); // این خط جدید
         }
+
+        private void SetupListViewEvents()
+        {
+            // رویداد کلیک روی آیتم‌های لیست
+            _view.SpriteListView.SelectedIndexChanged += (s, e) =>
+            {
+                if (_view.SpriteListView.SelectedItems.Count > 0)
+                {
+                    var sprite = _view.SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
+                    if (sprite != null && sprite != _selectedSprite)
+                    {
+                        UpdateSelectedSprite(sprite);
+                        _view.ImagePanel.Invalidate();
+                    }
+                }
+            };
+        }
+
+        private void UpdateThumbnailForSprite(SpriteDefinition sprite)
+        {
+            if (sprite == null || string.IsNullOrEmpty(_project.SourceImagePath)) return;
+            
+            try
+            {
+                // بارگذاری تصویر اصلی
+                using var sourceImage = Image.FromFile(_project.SourceImagePath);
+                
+                // ایجاد Thumbnail از ناحیه اسپرایت
+                var thumbnail = new Bitmap(48, 48);
+                using (var g = Graphics.FromImage(thumbnail))
+                {
+                    // پس‌زمینه خاکستری
+                    g.Clear(Color.DarkGray);
+                    
+                    // محاسبه scale برای fit کردن در 48x48
+                    float scaleX = 46f / sprite.Bounds.Width;
+                    float scaleY = 46f / sprite.Bounds.Height;
+                    float scale = Math.Min(scaleX, scaleY);
+                    
+                    int destWidth = (int)(sprite.Bounds.Width * scale);
+                    int destHeight = (int)(sprite.Bounds.Height * scale);
+                    int destX = (48 - destWidth) / 2;
+                    int destY = (48 - destHeight) / 2;
+                    
+                    // رسم ناحیه اسپرایت با حاشیه
+                    using var pen = new Pen(Color.White, 1);
+                    g.DrawRectangle(pen, destX, destY, destWidth, destHeight);
+                    
+                    // رسم تصویر (اگر فضای کافی وجود دارد)
+                    if (sprite.Bounds.Width > 0 && sprite.Bounds.Height > 0)
+                    {
+                        g.DrawImage(sourceImage,
+                            new Rectangle(destX + 1, destY + 1, destWidth - 2, destHeight - 2),
+                            sprite.Bounds,
+                            GraphicsUnit.Pixel);
+                    }
+                }
+                
+                // ذخیره Thumbnail
+                _view.SpriteThumbnails.AddOrUpdateThumbnail(sprite.Id, thumbnail);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating thumbnail: {ex.Message}");
+            }
+        }
+
+        private void UpdateAllThumbnails()
+        {
+            _view.SpriteThumbnails.Clear();
+            
+            foreach (var sprite in _project.Sprites)
+            {
+                UpdateThumbnailForSprite(sprite);
+            }
+            
+            _view.UpdateSpriteList(_project.Sprites);
+        }
+
+
 
         private void SetupPropertyGridTimer()
         {
@@ -160,6 +240,7 @@ namespace SpriteExtractor.Presenters
                 _view.ImagePanel.Invalidate();
                 
                 _view.UpdateStatus($"بارگذاری شد: {Path.GetFileName(dialog.FileName)}");
+                UpdateAllThumbnails();
             }
             catch (Exception ex)
             {
@@ -518,6 +599,8 @@ namespace SpriteExtractor.Presenters
                 _currentSelectionMode = SelectionMode.None;
                 _activeResizeHandle = ResizeHandle.None;
                 _view.ImagePanel.Cursor = Cursors.Default;
+                if (_selectedSprite != null)
+                    UpdateThumbnailForSprite(_selectedSprite);
                 _view.UpdateStatus($"Sprite updated. Position: ({_selectedSprite.Bounds.X}, {_selectedSprite.Bounds.Y}), Size: {_selectedSprite.Bounds.Width}x{_selectedSprite.Bounds.Height}");
             }
         }

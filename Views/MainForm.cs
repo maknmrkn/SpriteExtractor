@@ -20,11 +20,16 @@ namespace SpriteExtractor.Views
         public ListView SpriteListView { get; private set; } = null!;
         public PropertyGrid PropertyGrid { get; private set; } = null!;
         public StatusStrip StatusBar { get; private set; } = null!;
+        public SpriteImageList SpriteThumbnails { get; private set; }
         
         public MainForm()
         {
             InitializeComponent();
             _presenter = new MainPresenter(this);
+                    // این خط را اضافه کنید:
+        SpriteThumbnails = new SpriteImageList();
+        SpriteListView.SmallImageList = SpriteThumbnails.ImageList;
+        
         }
         
         private void InitializeComponent()
@@ -148,18 +153,23 @@ namespace SpriteExtractor.Views
         }
         
         // متدهای کمکی برای Presenter
-        public void UpdateSpriteList(List<SpriteDefinition> sprites)
+public void UpdateSpriteList(List<SpriteDefinition> sprites)
+{
+    SpriteListView.Items.Clear();
+    
+    foreach (var sprite in sprites.Where(s => s.IsVisible))
+    {
+        var item = new ListViewItem(sprite.Name)
         {
-            SpriteListView.Items.Clear();
-            foreach (var sprite in sprites.Where(s => s.IsVisible))
-            {
-                var item = new ListViewItem(sprite.Name);
-                item.SubItems.Add($"{sprite.Bounds.X}, {sprite.Bounds.Y}");
-                item.SubItems.Add($"{sprite.Bounds.Width}×{sprite.Bounds.Height}");
-                item.Tag = sprite;
-                SpriteListView.Items.Add(item);
-            }
-        }
+            Tag = sprite,
+             ImageIndex = SpriteThumbnails?.GetImageIndex(sprite.Id) ?? -1
+        };
+        
+        item.SubItems.Add($"{sprite.Bounds.X}, {sprite.Bounds.Y}");
+        item.SubItems.Add($"{sprite.Bounds.Width}×{sprite.Bounds.Height}");
+        SpriteListView.Items.Add(item);
+    }
+}
         
         public void UpdateStatus(string message)
         {
