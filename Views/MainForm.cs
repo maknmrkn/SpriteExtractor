@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Forms;
 using SpriteExtractor.Models;
 using SpriteExtractor.Presenters;
+using SpriteExtractor.Views;
 
 namespace SpriteExtractor.Views
 {
@@ -20,11 +21,15 @@ namespace SpriteExtractor.Views
         public ListView SpriteListView { get; private set; } = null!;
         public PropertyGrid PropertyGrid { get; private set; } = null!;
         public StatusStrip StatusBar { get; private set; } = null!;
+        public SpriteImageList SpriteThumbnails { get; private set; } // این خط را اضافه کنید
         
         public MainForm()
         {
             InitializeComponent();
             _presenter = new MainPresenter(this);
+        SpriteThumbnails = new SpriteImageList();
+        SpriteListView.SmallImageList = SpriteThumbnails.ImageList;
+        SpriteListView.SelectedIndexChanged += OnListViewSelectionChanged;
         }
         
         private void InitializeComponent()
@@ -147,16 +152,21 @@ namespace SpriteExtractor.Views
             MainTabs.TabPages.AddRange(new[] { manualTab, autoTab });
         }
         
-        // متدهای کمکی برای Presenter
         public void UpdateSpriteList(List<SpriteDefinition> sprites)
         {
             SpriteListView.Items.Clear();
+            
             foreach (var sprite in sprites.Where(s => s.IsVisible))
             {
-                var item = new ListViewItem(sprite.Name);
+                var item = new ListViewItem(sprite.Name)
+                {
+                    Tag = sprite,
+                    // 🔧 این خط حیاتی را اضافه کنید:
+                    ImageIndex = SpriteThumbnails?.GetImageIndex(sprite.Id) ?? -1
+                };
+                
                 item.SubItems.Add($"{sprite.Bounds.X}, {sprite.Bounds.Y}");
                 item.SubItems.Add($"{sprite.Bounds.Width}×{sprite.Bounds.Height}");
-                item.Tag = sprite;
                 SpriteListView.Items.Add(item);
             }
         }
@@ -165,6 +175,16 @@ namespace SpriteExtractor.Views
         {
             if (StatusBar.Items.Count > 0)
                 StatusBar.Items[0].Text = message;
+        }
+
+                private void OnListViewSelectionChanged(object sender, EventArgs e)
+        {
+            // به Presenter اطلاع بده که انتخاب در لیست تغییر کرده
+            if (_presenter != null && SpriteListView.SelectedItems.Count > 0)
+            {
+                var sprite = SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
+                _presenter.OnListViewItemSelected(sprite);
+            }
         }
     }
 }

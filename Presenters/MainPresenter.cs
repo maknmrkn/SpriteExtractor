@@ -111,24 +111,42 @@ namespace SpriteExtractor.Presenters
             // این متد را به MainPresenter اضافه کنید
             private void UpdateSelectedSprite(SpriteDefinition sprite)
             {
-                // تایمر قبلی را متوقف کن
+                // ۱. تایمر قبلی را متوقف کن
                 _propertyChangeTimer.Stop();
                 _isPropertyGridMonitoring = false;
                 
+                // ۲. تمام انتخاب‌های قبلی در ListView را پاک کن
+                foreach (ListViewItem item in _view.SpriteListView.Items)
+                {
+                    item.Selected = false;
+                }
+                
+                // ۳. اسپرایت جدید را تنظیم کن
                 _selectedSprite = sprite;
                 
                 if (_selectedSprite != null)
                 {
-                    // ذخیره وضعیت اولیه
+                    // ۴. ذخیره وضعیت اولیه
                     _lastKnownBounds = _selectedSprite.Bounds;
                     _isPropertyGridMonitoring = true;
                     
-                    // شروع مانیتورینگ
+                    // ۵. شروع مانیتورینگ
                     _propertyChangeTimer.Start();
+                    
+                    // ۶. آیتم مربوطه در ListView را انتخاب کن
+                    foreach (ListViewItem item in _view.SpriteListView.Items)
+                    {
+                        if (item.Tag == _selectedSprite)
+                        {
+                            item.Selected = true;
+                            item.EnsureVisible(); // اسکرول خودکار به آیتم
+                            break;
+                        }
+                    }
                 }
                 
+                // ۷. PropertyGrid را آپدیت کن
                 _view.PropertyGrid.SelectedObject = _selectedSprite;
-                UpdateListViewSelection();
             }
 
         // عملیات فایل - نسخه اصلاح شده بدون فریز
@@ -157,6 +175,7 @@ namespace SpriteExtractor.Presenters
                 
                 // آپدیت UI در Main Thread
                 _view.UpdateSpriteList(_project.Sprites);
+                UpdateAllThumbnails(); // 📌 ساخت Thumbnail برای همه اسپرایت‌ها
                 _view.ImagePanel.Invalidate();
                 
                 _view.UpdateStatus($"بارگذاری شد: {Path.GetFileName(dialog.FileName)}");
@@ -167,6 +186,7 @@ namespace SpriteExtractor.Presenters
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 _view.UpdateStatus("خطا در بارگذاری تصویر");
             }
+            
         }
         
         public void SaveProject()
@@ -381,18 +401,6 @@ namespace SpriteExtractor.Presenters
         }
 
         // متد کمکی برای آپدیت انتخاب در ListView
-        private void UpdateListViewSelection()
-        {
-            foreach (ListViewItem item in _view.SpriteListView.Items)
-            {
-                if (item.Tag == _selectedSprite)
-                {
-                    item.Selected = true;
-                    item.EnsureVisible();
-                    break;
-                }
-            }
-        }
         
                 private void OnImagePanelMouseMove(object sender, MouseEventArgs e)
         {
@@ -506,6 +514,7 @@ namespace SpriteExtractor.Presenters
                     
                     _project.Sprites.Add(sprite);
                     _view.UpdateSpriteList(_project.Sprites);
+                    UpdateAllThumbnails(); // 📌 ساخت Thumbnail + آپدیت لیست
                 }
                 
                 _currentRect = Rectangle.Empty;
@@ -518,9 +527,16 @@ namespace SpriteExtractor.Presenters
                 _currentSelectionMode = SelectionMode.None;
                 _activeResizeHandle = ResizeHandle.None;
                 _view.ImagePanel.Cursor = Cursors.Default;
-                _view.UpdateStatus($"Sprite updated. Position: ({_selectedSprite.Bounds.X}, {_selectedSprite.Bounds.Y}), Size: {_selectedSprite.Bounds.Width}x{_selectedSprite.Bounds.Height}");
+                 if (_selectedSprite != null)
+                    UpdateThumbnailForSprite(_selectedSprite); // 📌 فقط Thumbnail این اسپرایت را آپدیت کن
+                   _view.UpdateStatus($"Sprite updated. Position: ({_selectedSprite.Bounds.X}, {_selectedSprite.Bounds.Y}), Size: {_selectedSprite.Bounds.Width}x{_selectedSprite.Bounds.Height}");
+                
+                
             }
         }
+
+           
+
         private void OnImagePanelPaint(object sender, PaintEventArgs e)
         {
             var g = e.Graphics;
@@ -685,6 +701,85 @@ namespace SpriteExtractor.Presenters
                 _ => Cursors.Default
             };
         }
+        // این متد را به MainPresenter اضافه کنید
+        
+        private void UpdateThumbnailForSprite(SpriteDefinition sprite)
+            {
+                if (sprite == null || string.IsNullOrEmpty(_project.SourceImagePath)) return;
+                
+                try
+                {
+                    // بارگذاری تصویر اصلی
+                    using var sourceImage = Image.FromFile(_project.SourceImagePath);
+                    
+                    // ایجاد Thumbnail
+                    var thumbnail = new Bitmap(48, 48);
+                    using (var g = Graphics.FromImage(thumbnail))
+                    {
+                        g.Clear(Color.DarkGray);
+                        
+                        // محاسبه scale
+                        float scaleX = 46f / sprite.Bounds.Width;
+                        float scaleY = 46f / sprite.Bounds.Height;
+                        float scale = Math.Min(scaleX, scaleY);
+                        
+                        int destWidth = (int)(sprite.Bounds.Width * scale);
+                        int destHeight = (int)(sprite.Bounds.Height * scale);
+                        int destX = (48 - destWidth) / 2;
+                        int destY = (48 - destHeight) / 2;
+                        
+                        // رسم حاشیه
+                        using var pen = new Pen(Color.White, 1);
+                        g.DrawRectangle(pen, destX, destY, destWidth, destHeight);
+                        
+                        // رسم تصویر
+                        if (sprite.Bounds.Width > 0 && sprite.Bounds.Height > 0)
+                        {
+                            g.DrawImage(sourceImage,
+                                new Rectangle(destX + 1, destY + 1, destWidth - 2, destHeight - 2),
+                                sprite.Bounds,
+                                GraphicsUnit.Pixel);
+                        }
+                    }
+                    
+                    // ذخیره Thumbnail
+                    _view.SpriteThumbnails.AddOrUpdateThumbnail(sprite.Id, thumbnail);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error creating thumbnail: {ex.Message}");
+                }
+            }
+
+            private void UpdateAllThumbnails()
+            {
+                if (string.IsNullOrEmpty(_project.SourceImagePath)) return;
+                
+                try
+                {
+                    _view.SpriteThumbnails.Clear();
+                    
+                    foreach (var sprite in _project.Sprites)
+                    {
+                        UpdateThumbnailForSprite(sprite);
+                    }
+                    
+                    _view.UpdateSpriteList(_project.Sprites);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error updating thumbnails: {ex.Message}");
+                }
+            } 
+              
+                        public void OnListViewItemSelected(SpriteDefinition sprite)
+            {
+                if (sprite != null && sprite != _selectedSprite)
+                {
+                    UpdateSelectedSprite(sprite);
+                    _view.ImagePanel.Invalidate(); // رندر مجدد برای هایلایت
+                }
+            }
 
     }
 }
