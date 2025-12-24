@@ -25,6 +25,10 @@ namespace SpriteExtractor.Presenters
         private Rectangle _currentRect;
         private bool _isDragging = false;
 
+            private bool _suppressListSelectionChanged = false;
+            public bool IsSuppressingListSelection => _suppressListSelectionChanged;
+
+
         private SpriteDefinition _focusedSprite = null; // برای مدیریت focus
         public enum SelectionMode { None, Drawing, Moving, Resizing }
         public enum ResizeHandle { None, TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left }
@@ -143,8 +147,8 @@ private void SetupDoubleClickHandler()
             private void UpdateSelectedSprite(SpriteDefinition sprite)
             {
                 // ۱. تایمر قبلی را متوقف کن
-                _propertyChangeTimer.Stop();
-                _isPropertyGridMonitoring = false;
+                    _propertyChangeTimer?.Stop();
+                    _isPropertyGridMonitoring = false;
                 
                 // ۲. تمام انتخاب‌های قبلی در ListView را پاک کن
                 foreach (ListViewItem item in _view.SpriteListView.Items)
@@ -165,15 +169,26 @@ private void SetupDoubleClickHandler()
                     _propertyChangeTimer.Start();
                     
                     // ۶. آیتم مربوطه در ListView را انتخاب کن
-                    foreach (ListViewItem item in _view.SpriteListView.Items)
+                    _suppressListSelectionChanged = true;
+                    try
                     {
-                        if (item.Tag == _selectedSprite)
+                        if (_view?.SpriteListView != null)
                         {
-                            item.Selected = true;
-                            item.EnsureVisible(); // اسکرول خودکار به آیتم
-                            break;
+                            foreach (ListViewItem item in _view.SpriteListView.Items)
+                            {
+                                bool shouldSelect = (item.Tag == _selectedSprite);
+                                if (item.Selected != shouldSelect)
+                                    item.Selected = shouldSelect;
+                                if (shouldSelect)
+                                    item.EnsureVisible();
+                            }
                         }
                     }
+                    finally
+                    {
+                        _suppressListSelectionChanged = false;
+                    }
+
                 }
                 
                 // ۷. PropertyGrid را آپدیت کن
@@ -894,14 +909,38 @@ foreach (var sprite in visibleSprites)
                 }
             } 
               
-             public void OnListViewItemSelected(SpriteDefinition sprite)
-            {
-                if (sprite != null && sprite != _selectedSprite)
+                public void OnListViewItemSelected(SpriteDefinition sprite)
                 {
-                    UpdateSelectedSprite(sprite);
-                    _view.ImagePanel.Invalidate(); // رندر مجدد برای هایلایت
+                    if (_suppressListSelectionChanged) return;
+                    if (sprite == _selectedSprite) return;
+                    UpdateSelectedSprite(sprite); // UpdateSelectedSprite باید null-safe باشد
+                    _view?.ImagePanel?.Invalidate();
                 }
-            }
+
+                // اضافه کن داخل کلاس MainPresenter (بعد از OnListViewItemSelected یا قبل از OpenImage)
+                public void CancelCurrentOperation()
+                {
+                    // بازگشت به حالت ابزار پیش‌فرض
+                    SetToolMode("select");
+
+                    // پاک کردن انتخاب فعلی
+                    UpdateSelectedSprite(null);
+
+                    // ریست حالت‌های داخلی مرتبط با انتخاب/درگ
+                    _currentSelectionMode = SelectionMode.None;
+                    _activeResizeHandle = ResizeHandle.None;
+                    _isDragging = false;
+
+                    // توقف مانیتورینگ PropertyGrid اگر فعال است
+                    _propertyChangeTimer?.Stop();
+                    _isPropertyGridMonitoring = false;
+
+                    // رفرش نمای تصویر و وضعیت
+                    _view?.ImagePanel?.Invalidate();
+                    _view?.UpdateStatus("Operation cancelled");
+                }
+
+
 
             public void FocusOnSprite(SpriteDefinition sprite)
             {

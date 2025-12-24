@@ -31,6 +31,8 @@ namespace SpriteExtractor.Views
         SpriteListView.SmallImageList = SpriteThumbnails.ImageList;
         SpriteListView.SelectedIndexChanged += OnListViewSelectionChanged;
         SpriteListView.MouseDoubleClick += OnListViewDoubleClick;
+            this.KeyPreview = true;
+             this.KeyDown += MainForm_KeyDown;
 
         
         }
@@ -266,15 +268,38 @@ public void ScrollToSprite(Rectangle spriteBounds)
     }
 }
 
-                private void OnListViewSelectionChanged(object sender, EventArgs e)
-        {
-            // به Presenter اطلاع بده که انتخاب در لیست تغییر کرده
-            if (_presenter != null && SpriteListView.SelectedItems.Count > 0)
+            private void OnListViewSelectionChanged(object sender, EventArgs e)
             {
-                var sprite = SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
-                _presenter.OnListViewItemSelected(sprite);
+                if (_presenter != null && _presenter.IsSuppressingListSelection) return;
+
+                if (_presenter != null)
+                {
+                    if (SpriteListView.SelectedItems.Count > 0)
+                    {
+                        var sprite = SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
+                        _presenter.OnListViewItemSelected(sprite);
+                    }
+                    else
+                    {
+                        _presenter.OnListViewItemSelected(null);
+                    }
+                }
             }
-        }
+            private void MainForm_KeyDown(object sender, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Delete)
+                {
+                    _presenter?.DeleteSelectedSprite();
+                    e.Handled = true;
+                }
+                else if (e.KeyCode == Keys.Escape)
+                {
+                    _presenter?.CancelCurrentOperation();
+                    e.Handled = true;
+                }
+            }
+
+
 
         // متد کمکی برای آپدیت تیک کنار رنگ انتخاب‌شده
             private void UpdateHighlightColorMenu(ToolStripMenuItem menu, string selectedColorName)
