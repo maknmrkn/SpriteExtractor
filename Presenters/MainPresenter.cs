@@ -8,6 +8,7 @@ using System.Windows.Forms;
 using SpriteExtractor.Models;
 using SpriteExtractor.Services;
 using SpriteExtractor.Views;
+using System.Drawing.Imaging; // این خط حیاتی است
 
 namespace SpriteExtractor.Presenters
 {
@@ -168,6 +169,8 @@ namespace SpriteExtractor.Presenters
                         
                         // 🔧 بارگذاری تصویر با حفظ Alpha (شفافیت)
                         _loadedBitmap = LoadImageWithTransparency(dialog.FileName);
+
+                        DebugImageTransparency(dialog.FileName);
                         
                         _project.SourceImagePath = dialog.FileName;
                         _project.Sprites.Clear();
@@ -188,26 +191,17 @@ namespace SpriteExtractor.Presenters
             // 🔧 متد جدید برای بارگذاری تصویر با حفظ شفافیت
             private Bitmap LoadImageWithTransparency(string filePath)
             {
-                // بارگذاری اولیه
-                using var original = new Bitmap(filePath);
+                // بارگذاری مستقیم - نیازی به تغییر فرمت نیست
+                var bitmap = new Bitmap(filePath);
                 
-                // ایجاد Bitmap جدید با فرمت 32bppArgb (شامل Alpha channel)
-                var bitmap = new Bitmap(original.Width, original.Height, 
-                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-                
-                using (var g = Graphics.FromImage(bitmap))
+                // اگر تصویر شفافیت ندارد، همان را برگردان
+                if (!bitmap.PixelFormat.HasFlag(PixelFormat.Alpha))
                 {
-                    // 🔧 مهم: پس‌زمینه را transparent کنیم
-                    g.Clear(Color.Transparent);
-                    
-                    // 🔧 رسم تصویر با تنظیمات حفظ کیفیت
-                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    
-                    // رسم تصویر اصلی
-                    g.DrawImage(original, 0, 0, original.Width, original.Height);
+                    Console.WriteLine("⚠️ Image has no alpha channel");
+                    return bitmap;
                 }
                 
+                Console.WriteLine("✅ Image has alpha channel");
                 return bitmap;
             }
         
@@ -581,37 +575,52 @@ namespace SpriteExtractor.Presenters
 
         private void OnImagePanelPaint(object sender, PaintEventArgs e)
         {
+            
                 var g = e.Graphics;
-    
-                // 🔧 پس‌زمینه پنل (برای دیدن شفافیت)
-                using (var bgBrush = new SolidBrush(Color.DarkGray))
+                
+                // ۱. ابتدا پس‌زمینه شطرنجی بکش (برای نمایش شفافیت)
+                if (_checkerboardBrush == null)
                 {
-                    g.FillRectangle(bgBrush, _view.ImagePanel.ClientRectangle);
+                    var pattern = CreateCheckerboardPattern();
+                    _checkerboardBrush = new TextureBrush(pattern);
                 }
                 
-                // 🔧 اگر تصویر بارگذاری شده، آن را رسم کن
+                g.FillRectangle(_checkerboardBrush, _view.ImagePanel.ClientRectangle);
+                
+                // ۲. اگر تصویر بارگذاری شده، آن را با تنظیمات مناسب رسم کن
                 if (_loadedBitmap != null)
                 {
-                    // 🔧 حفظ تنظیمات کیفیت
+                    // 🔧 تنظیمات کیفیت برای حفظ شفافیت
+                    g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
+                    g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
                     g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
                     g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
                     
-                    g.DrawImage(_loadedBitmap, 0, 0);
-                }
-            
-            // اگر تصویری بارگذاری شده، آن را رسم کن
-            if (!string.IsNullOrEmpty(_project.SourceImagePath) && File.Exists(_project.SourceImagePath))
-            {
-                try
-                {
-                    using var image = Image.FromFile(_project.SourceImagePath);
-                    g.DrawImage(image, 0, 0);
-                }
-                catch
-                {
-                    // خطا در بارگذاری تصویر
-                }
-            }
+                    // 🔧 پارامترهای DrawImage که شفافیت را حفظ می‌کنند
+                    var imageAttr = new System.Drawing.Imaging.ImageAttributes();
+                    
+                    // مهم: ماتریس رنگ را تنظیم کن (بدون تغییر Alpha)
+                    imageAttr.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix
+                    {
+                        Matrix00 = 1, Matrix01 = 0, Matrix02 = 0, Matrix03 = 0, Matrix04 = 0,
+                        Matrix10 = 0, Matrix11 = 1, Matrix12 = 0, Matrix13 = 0, Matrix14 = 0,
+                        Matrix20 = 0, Matrix21 = 0, Matrix22 = 1, Matrix23 = 0, Matrix24 = 0,
+                        Matrix30 = 0, Matrix31 = 0, Matrix32 = 0, Matrix33 = 1, Matrix34 = 0,
+                        Matrix40 = 0, Matrix41 = 0, Matrix42 = 0, Matrix43 = 0, Matrix44 = 1
+                    });
+                    
+                    // رسم تصویر با حفظ شفافیت
+                    g.DrawImage(
+                        _loadedBitmap,
+                        new Rectangle(0, 0, _loadedBitmap.Width, _loadedBitmap.Height),
+                        0, 0, _loadedBitmap.Width, _loadedBitmap.Height,
+                        GraphicsUnit.Pixel,
+                        imageAttr
+                    );
+                    
+                    imageAttr.Dispose();
+         }
             
             // رسم مستطیل موقت
             if (_isDragging && _currentTool == "rectangle")
@@ -763,22 +772,27 @@ namespace SpriteExtractor.Presenters
         }
         // این متد را به MainPresenter اضافه کنید
         
-        private void UpdateThumbnailForSprite(SpriteDefinition sprite)
+             private void UpdateThumbnailForSprite(SpriteDefinition sprite)
             {
-                if (sprite == null || string.IsNullOrEmpty(_project.SourceImagePath)) return;
+                if (sprite == null || _loadedBitmap == null) return;
                 
                 try
                 {
-                    // بارگذاری تصویر اصلی
-                    using var sourceImage = Image.FromFile(_project.SourceImagePath);
+                    var thumbnail = new Bitmap(48, 48, PixelFormat.Format32bppArgb);
                     
-                    // ایجاد Thumbnail
-                    var thumbnail = new Bitmap(48, 48);
                     using (var g = Graphics.FromImage(thumbnail))
                     {
-                        g.Clear(Color.DarkGray);
+                        // ۱. پس‌زمینه شطرنجی برای Thumbnail
+                        if (_checkerboardBrush != null)
+                        {
+                            g.FillRectangle(_checkerboardBrush, 0, 0, 48, 48);
+                        }
+                        else
+                        {
+                            g.Clear(Color.DarkGray);
+                        }
                         
-                        // محاسبه scale
+                        // ۲. محاسبه scale
                         float scaleX = 46f / sprite.Bounds.Width;
                         float scaleY = 46f / sprite.Bounds.Height;
                         float scale = Math.Min(scaleX, scaleY);
@@ -788,18 +802,22 @@ namespace SpriteExtractor.Presenters
                         int destX = (48 - destWidth) / 2;
                         int destY = (48 - destHeight) / 2;
                         
-                        // رسم حاشیه
-                        using var pen = new Pen(Color.White, 1);
-                        g.DrawRectangle(pen, destX, destY, destWidth, destHeight);
+                        // ۳. تنظیمات برای حفظ شفافیت
+                        g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
+                        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
                         
-                        // رسم تصویر
+                        // ۴. رسم ناحیه اسپرایت
                         if (sprite.Bounds.Width > 0 && sprite.Bounds.Height > 0)
                         {
-                            g.DrawImage(sourceImage,
+                            g.DrawImage(_loadedBitmap,
                                 new Rectangle(destX + 1, destY + 1, destWidth - 2, destHeight - 2),
                                 sprite.Bounds,
                                 GraphicsUnit.Pixel);
                         }
+                        
+                        // ۵. حاشیه سفید دور Thumbnail
+                        using var pen = new Pen(Color.White, 1);
+                        g.DrawRectangle(pen, destX, destY, destWidth, destHeight);
                     }
                     
                     // ذخیره Thumbnail
@@ -862,7 +880,69 @@ namespace SpriteExtractor.Presenters
             {
                 _loadedBitmap?.Dispose();
                 _loadedBitmap = null;
+                
+                _checkerboardBrush?.Dispose();
+                _checkerboardBrush = null;
+                
+                _view.SpriteThumbnails?.Clear();
+                _propertyChangeTimer?.Stop();
+                _propertyChangeTimer?.Dispose();
             }
+
+            private void DebugImageTransparency(string filePath)
+            {
+                try
+                {
+                    using var bmp = new Bitmap(filePath);
+                    Console.WriteLine($"📊 Image Debug: {Path.GetFileName(filePath)}");
+                    Console.WriteLine($"   Size: {bmp.Width}x{bmp.Height}");
+                    Console.WriteLine($"   PixelFormat: {bmp.PixelFormat}");
+                    Console.WriteLine($"   HasAlpha: {bmp.PixelFormat.HasFlag(PixelFormat.Alpha)}");
+                    
+                    // تست پیکسل‌های گوشه‌ها
+                    var corners = new[] { new Point(0, 0), new Point(bmp.Width-1, 0), 
+                                        new Point(0, bmp.Height-1), new Point(bmp.Width-1, bmp.Height-1) };
+                    
+                    foreach (var point in corners)
+                    {
+                        if (point.X < bmp.Width && point.Y < bmp.Height)
+                        {
+                            var color = bmp.GetPixel(point.X, point.Y);
+                            Console.WriteLine($"   Pixel({point.X},{point.Y}): A={color.A}, R={color.R}, G={color.G}, B={color.B}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Debug error: {ex.Message}");
+                }
+            }
+
+            private Bitmap CreateCheckerboardPattern(int cellSize = 10)
+            {
+                var pattern = new Bitmap(cellSize * 2, cellSize * 2);
+                
+                using (var g = Graphics.FromImage(pattern))
+                {
+                    // سلول خاکستری تیره
+                    using (var darkBrush = new SolidBrush(Color.FromArgb(100, 100, 100)))
+                    {
+                        g.FillRectangle(darkBrush, 0, 0, cellSize, cellSize);
+                        g.FillRectangle(darkBrush, cellSize, cellSize, cellSize, cellSize);
+                    }
+                    
+                    // سلول خاکستری روشن
+                    using (var lightBrush = new SolidBrush(Color.FromArgb(150, 150, 150)))
+                    {
+                        g.FillRectangle(lightBrush, cellSize, 0, cellSize, cellSize);
+                        g.FillRectangle(lightBrush, 0, cellSize, cellSize, cellSize);
+                    }
+                }
+                
+                return pattern;
+            }
+
+            private TextureBrush _checkerboardBrush = null;
 
     }
 }
