@@ -9,7 +9,7 @@ using SpriteExtractor.Models;
 using SpriteExtractor.Services;
 using SpriteExtractor.Views;
 using System.Drawing.Imaging; // این خط حیاتی است
-using System.Threading.Tasks;
+//using System.Threading.Tasks;
 
 
 namespace SpriteExtractor.Presenters
@@ -894,7 +894,7 @@ foreach (var sprite in visibleSprites)
                 }
             } 
               
-                        public void OnListViewItemSelected(SpriteDefinition sprite)
+             public void OnListViewItemSelected(SpriteDefinition sprite)
             {
                 if (sprite != null && sprite != _selectedSprite)
                 {
