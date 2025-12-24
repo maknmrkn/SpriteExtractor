@@ -9,6 +9,8 @@ using SpriteExtractor.Models;
 using SpriteExtractor.Services;
 using SpriteExtractor.Views;
 using System.Drawing.Imaging; // این خط حیاتی است
+using System.Threading.Tasks;
+
 
 namespace SpriteExtractor.Presenters
 {
@@ -22,6 +24,8 @@ namespace SpriteExtractor.Presenters
         private Point _dragStart;
         private Rectangle _currentRect;
         private bool _isDragging = false;
+
+        private SpriteDefinition _focusedSprite = null; // برای مدیریت focus
         public enum SelectionMode { None, Drawing, Moving, Resizing }
         public enum ResizeHandle { None, TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left }
 
@@ -43,7 +47,8 @@ namespace SpriteExtractor.Presenters
             
             SetupEventHandlers();
             SetupPropertyGridTimer(); // این خط را اضافه کنید
-            
+            // بعد از آن این خط را اضافه کنید:
+SetupDoubleClickHandler();
         }
 
         private void SetupPropertyGridTimer()
@@ -77,6 +82,30 @@ namespace SpriteExtractor.Presenters
              _view.PropertyGrid.SelectedGridItemChanged += OnPropertyGridItemChanged;
              
         }
+
+        // بعد از متد SetupEventHandlers، این متد را اضافه کنید:
+private void SetupDoubleClickHandler()
+{
+    // دابل‌کلیک روی لیست اسپرایت‌ها
+    _view.SpriteListView.MouseDoubleClick += (sender, e) =>
+    {
+        if (_view.SpriteListView.SelectedItems.Count > 0)
+        {
+            var sprite = _view.SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
+            if (sprite != null)
+            {
+                // اسکرول به موقعیت اسپرایت
+                _view.ScrollToSprite(sprite.Bounds);
+                
+                // هایلایت متمایز (اختیاری - برای گام بعدی)
+                _focusedSprite = sprite;
+                _view.ImagePanel.Invalidate();
+                
+                _view.UpdateStatus($"Focused: {sprite.Name}");
+            }
+        }
+    };
+}
 
         private void OnPropertyGridItemChanged(object sender, SelectedGridItemChangedEventArgs e)
         {
@@ -283,14 +312,26 @@ namespace SpriteExtractor.Presenters
             }
         }
         
-        public void OnSpriteSelected()
+       public void OnSpriteSelected()
+{
+    if (_view.SpriteListView.SelectedItems.Count > 0)
+    {
+        var sprite = _view.SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
+        _view.PropertyGrid.SelectedObject = sprite;
+        
+        // اسکرول خودکار هنگام انتخاب از لیست
+        if (sprite != null)
         {
-            if (_view.SpriteListView.SelectedItems.Count > 0)
-            {
-                var sprite = _view.SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
-                _view.PropertyGrid.SelectedObject = sprite;
-            }
+            _view.ScrollToSprite(sprite.Bounds);
+            _focusedSprite = sprite; // تنظیم focus
+            _view.ImagePanel.Invalidate(); // رندر مجدد برای هایلایت
         }
+    }
+    else
+    {
+        _focusedSprite = null; // اگر چیزی انتخاب نشده
+    }
+}
         
         // توابع Undo/Redo موقت
         public void Undo() 
@@ -666,25 +707,28 @@ namespace SpriteExtractor.Presenters
             // رسم مستطیل‌های ذخیره شده
             // رسم مستطیل‌های ذخیره شده
             var visibleSprites = _project.Sprites.Where(s => s.IsVisible).ToList();
-            foreach (var sprite in visibleSprites)
-            {
-                // 🔧 استفاده از رنگ هایلایت از تنظیمات پروژه
-                Color borderColor = (sprite == _selectedSprite) ? 
-                    _project.Settings.HighlightColor : Color.Lime;
-                
-                float borderWidth = (sprite == _selectedSprite) ? 2.5f : 1.5f;
-                
-                using var pen = new Pen(borderColor, borderWidth);
-                g.DrawRectangle(pen, sprite.Bounds);
-                
-                // نمایش نام
-                using var brush = new SolidBrush(Color.White);
-                g.DrawString(sprite.Name, 
-                    new Font("Arial", 10, FontStyle.Bold), 
-                    brush, 
-                    sprite.Bounds.X, 
-                    sprite.Bounds.Y - 20);
-            }
+foreach (var sprite in visibleSprites)
+{
+    // تشخیص اسپرایت focus شده
+    bool isFocused = (sprite == _focusedSprite);
+    
+    // رنگ و thickness متفاوت برای focus
+    var penColor = isFocused ? Color.Cyan : Color.Lime;
+    var penThickness = isFocused ? 2.5f : 1f;
+    
+    using var pen = new Pen(penColor, penThickness);
+    g.DrawRectangle(pen, sprite.Bounds);
+    
+    // نمایش نام با رنگ متفاوت برای focus
+    var textColor = isFocused ? Color.Yellow : Color.White;
+    using var brush = new SolidBrush(textColor);
+    g.DrawString(sprite.Name, 
+        new Font("Arial", isFocused ? 11 : 10, 
+                isFocused ? FontStyle.Bold : FontStyle.Regular), 
+        brush, 
+        sprite.Bounds.X, 
+        sprite.Bounds.Y - 20);
+}
         }
         private SpriteDefinition HitTestSprites(Point location)
         {

@@ -171,7 +171,8 @@ namespace SpriteExtractor.Views
             {
                 Dock = DockStyle.Fill,
                 BackColor = Color.DarkGray,
-                BorderStyle = BorderStyle.FixedSingle
+                BorderStyle = BorderStyle.FixedSingle,
+                AutoScroll = true
             };
             splitContainer.Panel1.Controls.Add(ImagePanel);
             
@@ -235,6 +236,35 @@ namespace SpriteExtractor.Views
             if (StatusBar.Items.Count > 0)
                 StatusBar.Items[0].Text = message;
         }
+
+        // این متد جدید را اضافه کنید:
+public void ScrollToSprite(Rectangle spriteBounds)
+{
+    if (ImagePanel == null || !ImagePanel.AutoScroll) return;
+    
+    try
+    {
+        // محاسبه موقعیت مرکز اسپرایت
+        int centerX = spriteBounds.X + (spriteBounds.Width / 2);
+        int centerY = spriteBounds.Y + (spriteBounds.Height / 2);
+        
+        // محاسبه offset برای اسکرول (مرکز کردن در viewport)
+        int scrollX = centerX - (ImagePanel.ClientSize.Width / 2);
+        int scrollY = centerY - (ImagePanel.ClientSize.Height / 2);
+        
+        // محدود کردن به محدوده‌های معتبر
+        scrollX = Math.Max(0, scrollX);
+        scrollY = Math.Max(0, scrollY);
+        
+        // اعمال اسکرول
+        ImagePanel.AutoScrollPosition = new Point(scrollX, scrollY);
+        ImagePanel.Invalidate(); // رندر مجدد
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Scroll error: {ex.Message}");
+    }
+}
 
                 private void OnListViewSelectionChanged(object sender, EventArgs e)
         {
