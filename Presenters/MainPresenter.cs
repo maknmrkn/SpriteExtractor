@@ -9,7 +9,7 @@ using SpriteExtractor.Models;
 using SpriteExtractor.Services;
 using SpriteExtractor.Views;
 using System.Drawing.Imaging; // این خط حیاتی است
-//using System.Threading.Tasks;
+
 
 
 namespace SpriteExtractor.Presenters
@@ -27,6 +27,9 @@ namespace SpriteExtractor.Presenters
 
             private bool _suppressListSelectionChanged = false;
             public bool IsSuppressingListSelection => _suppressListSelectionChanged;
+            // Command manager
+        private readonly Services.CommandManager _commandManager = new Services.CommandManager();
+
 
 
         private SpriteDefinition _focusedSprite = null; // برای مدیریت focus
@@ -52,7 +55,8 @@ namespace SpriteExtractor.Presenters
             SetupEventHandlers();
             SetupPropertyGridTimer(); // این خط را اضافه کنید
             // بعد از آن این خط را اضافه کنید:
-SetupDoubleClickHandler();
+            SetupDoubleClickHandler();
+            
         }
 
         private void SetupPropertyGridTimer()
@@ -84,6 +88,7 @@ SetupDoubleClickHandler();
               // 🔧 این خط برای Two-Way Binding ضروری است:
             // _view.PropertyGrid.PropertyValueChanged += OnPropertyGridValueChanged;
              _view.PropertyGrid.SelectedGridItemChanged += OnPropertyGridItemChanged;
+             
              
         }
 
@@ -311,21 +316,113 @@ private void SetupDoubleClickHandler()
             _view.UpdateStatus($"Tool: {tool}");
         }
         
-        public void DeleteSelectedSprite()
-        {
-            if (_view.SpriteListView.SelectedItems.Count > 0)
-            {
-                var sprite = _view.SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
-                if (sprite != null)
+                public void DeleteSelectedSprite()
                 {
-                    _project.Sprites.Remove(sprite);
-                    _view.UpdateSpriteList(_project.Sprites);
-                    _view.ImagePanel.Invalidate();
-                    // 🔥 فقط این یک خط را اضافه کنید:
-                      UpdateSelectedSprite(null); // این خط جدید است
+                    var sprite = _selectedSprite;
+                    if (sprite == null && _view?.SpriteListView?.SelectedItems.Count > 0)
+                        sprite = _view.SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
+
+                    if (sprite == null) return;
+
+                    int index = -1;
+                    if (_project?.Sprites != null)
+                        index = _project.Sprites.IndexOf(sprite);
+
+                    var result = System.Windows.Forms.MessageBox.Show($"Delete sprite '{sprite.Name}'?", "Confirm delete", System.Windows.Forms.MessageBoxButtons.YesNo, System.Windows.Forms.MessageBoxIcon.Warning);
+                    if (result != System.Windows.Forms.DialogResult.Yes) return;
+
+                    // ساخت DelegateCommand با اکشن‌های حذف و بازگردانی
+                    var cmd = new Services.DelegateCommand(
+                        execute: () => RemoveSpriteInternal(sprite),
+                        undo:    () => InsertSpriteInternal(sprite, index),
+                        description: $"Delete '{sprite.Name}'"
+                    );
+
+                    _commandManager.ExecuteCommand(cmd);
+                    _view?.UpdateStatus($"Sprite '{sprite.Name}' deleted");
                 }
-            }
-        }
+                                    // اضافه کن در MainPresenter.cs، بعد از DeleteSelectedSprite()
+                    public void Undo() => _commandManager.Undo();
+                    public void Redo() => _commandManager.Redo();
+                    public bool CanUndo() => _commandManager.CanUndo;
+                    public bool CanRedo() => _commandManager.CanRedo;
+
+
+
+
+                        // حذف واقعی بدون مدیریت undo stack (private helper)
+                private void RemoveSpriteInternal(SpriteDefinition sprite)
+                {
+                    if (sprite == null) return;
+
+                    // حذف از مدل
+                    if (_project?.Sprites != null && _project.Sprites.Contains(sprite))
+                    {
+                        _project.Sprites.Remove(sprite);
+                    }
+
+                    // حذف آیتم از ListView در ویو
+                    if (_view?.SpriteListView != null)
+                    {
+                        ListViewItem toRemove = null;
+                        foreach (ListViewItem item in _view.SpriteListView.Items)
+                        {
+                            if (item.Tag == sprite) { toRemove = item; break; }
+                        }
+                        if (toRemove != null)
+                        {
+                            // موقتا سرکوب رویدادها تا SelectedIndexChanged تریگر نشود
+                            _suppressListSelectionChanged = true;
+                            try
+                            {
+                                _view.SpriteListView.Items.Remove(toRemove);
+                            }
+                            finally
+                            {
+                                _suppressListSelectionChanged = false;
+                            }
+                        }
+                    }
+
+                    // اگر اسپرایت حذف‌شده انتخاب فعلی بود، پاک کن
+                    if (_selectedSprite == sprite)
+                    {
+                        UpdateSelectedSprite(null);
+                    }
+
+                    // رفرش نمای تصویر
+                    _view?.ImagePanel?.Invalidate();
+                }
+
+                // درج واقعی بدون مدیریت undo stack (private helper)
+                private void InsertSpriteInternal(SpriteDefinition sprite, int index)
+                {
+                    if (sprite == null) return;
+
+                    // درج در مدل
+                    if (_project?.Sprites != null)
+                    {
+                        if (index >= 0 && index <= _project.Sprites.Count)
+                            _project.Sprites.Insert(index, sprite);
+                        else
+                            _project.Sprites.Add(sprite);
+                    }
+
+                    // درج در ListView (ایجاد ListViewItem مشابه بقیه)
+                    if (_view?.SpriteListView != null)
+                    {
+                        var item = new ListViewItem(sprite.Name ?? "Sprite") { Tag = sprite };
+                        // اگر لازم است ستون‌های دیگر را هم مقداردهی کن (SubItems)
+                        if (index >= 0 && index <= _view.SpriteListView.Items.Count)
+                            _view.SpriteListView.Items.Insert(index, item);
+                        else
+                            _view.SpriteListView.Items.Add(item);
+                    }
+
+                    // رفرش نمای تصویر
+                    _view?.ImagePanel?.Invalidate();
+                }
+
         
        public void OnSpriteSelected()
 {

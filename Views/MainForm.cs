@@ -297,6 +297,20 @@ public void ScrollToSprite(Rectangle spriteBounds)
                     _presenter?.CancelCurrentOperation();
                     e.Handled = true;
                 }
+                // داخل MainForm_KeyDown
+                if (e.Control && e.KeyCode == Keys.Z)
+                {
+                    _presenter?.Undo();
+                    e.Handled = true;
+                    return;
+                }
+                else if (e.Control && e.KeyCode == Keys.Y)
+                {
+                    _presenter?.Redo();
+                    e.Handled = true;
+                    return;
+                }
+
             }
 
 
