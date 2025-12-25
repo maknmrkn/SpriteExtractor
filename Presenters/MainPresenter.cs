@@ -1348,25 +1348,25 @@ namespace SpriteExtractor.Presenters
             }
         }
 
-        private void OnCommandOperationPerformed(CommandManager.OperationType op)
+private void OnCommandOperationPerformed(CommandManager.OperationType op)
+{
+    if (op == CommandManager.OperationType.Undo ||
+        op == CommandManager.OperationType.Redo ||
+        op == CommandManager.OperationType.Clear)
+    {
+        // 1️⃣ بازسازی thumbnailها قبل از آپدیت لیست
+        if (_project?.Sprites != null)
         {
-            if (op == CommandManager.OperationType.Undo ||
-                op == CommandManager.OperationType.Redo ||
-                op == CommandManager.OperationType.Clear)
-            {
-                // 1️⃣ اول تامبنیل‌ها رو کامل از مدل بازسازی کن
-                RebuildThumbnailsFromModel();
-
-                // 2️⃣ بعد لیست رو بساز (ImageKey ها اینجا ست می‌شن)
-                _view?.UpdateSpriteList(_project?.Sprites ?? new List<SpriteDefinition>());
-
-                // 3️⃣ فقط Refresh — SmallImageList را اینجا دوباره ست نکن
-                _view?.SpriteListView?.Refresh();
-
-                // 4️⃣ پنل تصویر هم یک Invalidate ساده
-                _view?.ImagePanel?.Invalidate();
-            }
+            UpdateAllThumbnails();
         }
+
+        // 2️⃣ حالا لیست را با thumbnailهای آماده آپدیت کن
+        _view?.UpdateSpriteList(_project?.Sprites ?? new List<SpriteDefinition>());
+
+        // 3️⃣ پنل تصویر را Invalidate کن
+        _view?.ImagePanel?.Invalidate();
+    }
+}
 
 
 
