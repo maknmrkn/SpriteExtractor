@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
 
+using Newtonsoft.Json;
+
 namespace SpriteExtractor.Models
 {
     public class ProjectSettings
@@ -10,6 +12,10 @@ namespace SpriteExtractor.Models
         public bool AutoDetectEnabled { get; set; } = false;
         
         // 🔧 این Property جدید برای رنگ هایلایت - حتماً باید وجود داشته باشد
-        public Color HighlightColor { get; set; } = Color.Orange;
+        [JsonIgnore] 
+        public Color HighlightColor { get; set; } = Color.Orange; 
+        [JsonProperty("HighlightColor")] 
+        public int HighlightColorArgb { get => HighlightColor.ToArgb(); set => HighlightColor = Color.FromArgb(value);
     }
-}
+ }
+}  
