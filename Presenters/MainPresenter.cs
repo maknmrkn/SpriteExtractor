@@ -353,6 +353,8 @@ namespace SpriteExtractor.Presenters
             );
 
             _commandManager.ExecuteCommand(cmd);
+            // Rebuild the list to reset thumbnail cache after removal
+            _view.UpdateSpriteList(_project.Sprites);
             _view?.UpdateStatus($"Sprite '{sprite.Name}' deleted");
         }
         // اضافه کن در MainPresenter.cs، بعد از DeleteSelectedSprite()
@@ -437,6 +439,8 @@ namespace SpriteExtractor.Presenters
                         {
                             int removedIndex = _view.SpriteListView.Items.IndexOf(toRemove);
                             _view.SpriteListView.Items.Remove(toRemove);
+                            // Rebuild the list to reset thumbnail cache after removal
+                            _view.UpdateSpriteList(_project.Sprites);
 
                             // انتخاب آیتم مجاور
                             if (_view.SpriteListView.Items.Count > 0)
