@@ -19,9 +19,10 @@ namespace SpriteExtractor.Models
         public Rectangle Bounds { get; set; }
         public Point Pivot { get; set; } = new Point(0, 0);
         public bool IsVisible { get; set; } = true;
-        
+
+        // ← این را اضافه کن
+        public Image Thumbnail { get; set; }
+
         public override string ToString() => $"{Name} ({Bounds.X}, {Bounds.Y}, {Bounds.Width}, {Bounds.Height})";
     }
-
-
 }

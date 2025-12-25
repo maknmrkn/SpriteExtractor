@@ -12,7 +12,7 @@ namespace SpriteExtractor.Views
     public partial class MainForm : Form
     {
         private MainPresenter _presenter;
-        
+
         // کنترل‌های اصلی - با مقدار اولیه null! برای رفع CS8618
         public MenuStrip MainMenu { get; private set; } = null!;
         public ToolStrip Toolbar { get; private set; } = null!;
@@ -22,50 +22,73 @@ namespace SpriteExtractor.Views
         public PropertyGrid PropertyGrid { get; private set; } = null!;
         public StatusStrip StatusBar { get; private set; } = null!;
         public SpriteImageList SpriteThumbnails { get; private set; } // این خط را اضافه کنید
-        
+        private SpriteImageList _spriteImageList;
+        public SpriteImageList SpriteImageList => _spriteImageList;
+
+
         public MainForm()
         {
             InitializeComponent();
             _presenter = new MainPresenter(this);
-        SpriteThumbnails = new SpriteImageList();
-        SpriteListView.SmallImageList = SpriteThumbnails.ImageList;
-        SpriteListView.SelectedIndexChanged += OnListViewSelectionChanged;
-        SpriteListView.MouseDoubleClick += OnListViewDoubleClick;
-            this.KeyPreview = true;
-             this.KeyDown += MainForm_KeyDown;
 
-        
+            // single/shared SpriteImageList instance for everything
+            _spriteImageList = new SpriteImageList();
+            SpriteThumbnails = _spriteImageList;               // make both references point to same object
+            SpriteListView.SmallImageList = _spriteImageList.ImageList;
+
+            SpriteListView.SelectedIndexChanged += OnListViewSelectionChanged;
+            SpriteListView.MouseDoubleClick += OnListViewDoubleClick;
+            this.KeyPreview = true;
+            this.KeyDown += MainForm_KeyDown;
+
+
+            // اطمینان از جزئیات نمایش و ستون‌ها
+            SpriteListView.View = View.Details;
+            if (SpriteListView.Columns.Count < 3)
+            {
+                SpriteListView.Columns.Clear();
+                SpriteListView.Columns.Add("Name", 150);
+                SpriteListView.Columns.Add("Position", 120);
+                SpriteListView.Columns.Add("Size", 100);
+            }
+
+
+
+
+
+
         }
-        
+
         private void InitializeComponent()
         {
+
             // تنظیمات اصلی فرم
             this.Text = "Sprite Extractor - MVP";
             this.WindowState = FormWindowState.Maximized;
-            
+
             // ایجاد منوی اصلی
             MainMenu = new MenuStrip();
             CreateMenuItems();
             this.Controls.Add(MainMenu);
-           
-            
+
+
             // ایجاد نوار ابزار
             Toolbar = new ToolStrip();
             CreateToolbarItems();
             this.Controls.Add(Toolbar);
-            
+
             // ایجاد TabControl
             MainTabs = new TabControl { Dock = DockStyle.Fill, Top = 60 };
             CreateTabs();
             this.Controls.Add(MainTabs);
-            
+
             // ایجاد StatusBar
             StatusBar = new StatusStrip { Dock = DockStyle.Bottom };
             StatusBar.Items.Add("Ready");
             this.Controls.Add(StatusBar);
-            
+
         }
-        
+
         private void CreateMenuItems()
         {
             var fileMenu = new ToolStripMenuItem("File");
@@ -76,19 +99,19 @@ namespace SpriteExtractor.Views
             fileMenu.DropDownItems.Add("Export Sprites...", null, (s, e) => _presenter.ExportSprites());
             fileMenu.DropDownItems.Add("-");
             fileMenu.DropDownItems.Add("Exit", null, (s, e) => this.Close());
-            
+
             var editMenu = new ToolStripMenuItem("Edit");
             editMenu.DropDownItems.Add("Undo", null, (s, e) => _presenter.Undo());
             editMenu.DropDownItems.Add("Redo", null, (s, e) => _presenter.Redo());
             editMenu.DropDownItems.Add("-");
             editMenu.DropDownItems.Add("Delete Sprite", null, (s, e) => _presenter.DeleteSelectedSprite());
-            
-            
-                var viewMenu = new ToolStripMenuItem("View");
-    
+
+
+            var viewMenu = new ToolStripMenuItem("View");
+
             // زیرمنوی انتخاب رنگ هایلایت
             var highlightColorMenu = new ToolStripMenuItem("Highlight Color");
-            
+
             // رنگ‌های پیش‌فرض
             var colors = new Dictionary<string, Color>
             {
@@ -99,51 +122,51 @@ namespace SpriteExtractor.Views
                 {"Purple", Color.Purple},
                 {"Yellow", Color.Yellow}
             };
-            
+
             foreach (var color in colors)
             {
-                var item = new ToolStripMenuItem(color.Key, null, (s, e) => 
+                var item = new ToolStripMenuItem(color.Key, null, (s, e) =>
                 {
                     _presenter?.SetHighlightColor(color.Value);
                     UpdateHighlightColorMenu(highlightColorMenu, color.Key);
                 });
-                
+
                 highlightColorMenu.DropDownItems.Add(item);
             }
-            
+
             // جداکننده
             highlightColorMenu.DropDownItems.Add(new ToolStripSeparator());
-            
+
             // گزینه انتخاب رنگ دلخواه
-        // گزینه انتخاب رنگ دلخواه (نسخه ساده‌شده)
-        var customColorItem = new ToolStripMenuItem("Custom Color...", null, (s, e) => 
-        {
-            using var colorDialog = new ColorDialog
+            // گزینه انتخاب رنگ دلخواه (نسخه ساده‌شده)
+            var customColorItem = new ToolStripMenuItem("Custom Color...", null, (s, e) =>
             {
-                Color = _presenter?.GetHighlightColor() ?? Color.Orange,
-                FullOpen = true
-            };
-            
-            if (colorDialog.ShowDialog() == DialogResult.OK)
-            {
-                _presenter?.SetHighlightColor(colorDialog.Color);
-                
-                // 🔧 فقط نام را به "Custom" تغییر دهید
-                 UpdateHighlightColorMenu(highlightColorMenu, "Custom");
-            }
-        });
-            
+                using var colorDialog = new ColorDialog
+                {
+                    Color = _presenter?.GetHighlightColor() ?? Color.Orange,
+                    FullOpen = true
+                };
+
+                if (colorDialog.ShowDialog() == DialogResult.OK)
+                {
+                    _presenter?.SetHighlightColor(colorDialog.Color);
+
+                    // 🔧 فقط نام را به "Custom" تغییر دهید
+                    UpdateHighlightColorMenu(highlightColorMenu, "Custom");
+                }
+            });
+
             highlightColorMenu.DropDownItems.Add(customColorItem);
-            
+
             viewMenu.DropDownItems.Add(highlightColorMenu);
             MainMenu.Items.Add(viewMenu);
             var toolsMenu = new ToolStripMenuItem("Tools");
             toolsMenu.DropDownItems.Add("Auto-Detect Sprites", null, (s, e) => _presenter.AutoDetect());
-            
+
             MainMenu.Items.AddRange(new[] { fileMenu, editMenu, viewMenu, toolsMenu });
             UpdateHighlightColorMenu(highlightColorMenu, "Orange");
         }
-        
+
         private void CreateToolbarItems()
         {
             Toolbar.Items.Add(new ToolStripButton("Open", null, (s, e) => _presenter.OpenImage()));
@@ -155,19 +178,19 @@ namespace SpriteExtractor.Views
             Toolbar.Items.Add(new ToolStripButton("Zoom Out", null, (s, e) => _presenter.ZoomOut()));
             Toolbar.Items.Add(new ToolStripButton("Fit to Screen", null, (s, e) => _presenter.ZoomFit()));
         }
-        
+
         private void CreateTabs()
         {
             // تب ویرایش دستی
             var manualTab = new TabPage("Manual Editing");
-            
+
             var splitContainer = new SplitContainer
             {
                 Dock = DockStyle.Fill,
                 Orientation = Orientation.Vertical,
                 SplitterDistance = 700
             };
-            
+
             // پنل سمت چپ برای نمایش تصویر
             ImagePanel = new DoubleBufferedPanel
             {
@@ -177,14 +200,14 @@ namespace SpriteExtractor.Views
                 AutoScroll = true
             };
             splitContainer.Panel1.Controls.Add(ImagePanel);
-            
+
             // پنل سمت راست برای لیست و خصوصیات
             var rightPanel = new SplitContainer
             {
                 Dock = DockStyle.Fill,
                 Orientation = Orientation.Vertical
             };
-            
+
             SpriteListView = new ListView
             {
                 Dock = DockStyle.Fill,
@@ -196,43 +219,58 @@ namespace SpriteExtractor.Views
             SpriteListView.Columns.Add("Size", 100);
             SpriteListView.SelectedIndexChanged += (s, e) => _presenter.OnSpriteSelected();
             rightPanel.Panel1.Controls.Add(SpriteListView);
-            
+
             PropertyGrid = new PropertyGrid
             {
                 Dock = DockStyle.Fill,
                 ToolbarVisible = false
             };
             rightPanel.Panel2.Controls.Add(PropertyGrid);
-            
+
             splitContainer.Panel2.Controls.Add(rightPanel);
             manualTab.Controls.Add(splitContainer);
-            
+
             // تب ویرایش خودکار
             var autoTab = new TabPage("Auto Detection");
             // بعداً تکمیل می‌شود
-            
+
             MainTabs.TabPages.AddRange(new[] { manualTab, autoTab });
         }
-        
+
         public void UpdateSpriteList(List<SpriteDefinition> sprites)
         {
+            if (SpriteListView == null) return;
+
+            SpriteListView.BeginUpdate();
             SpriteListView.Items.Clear();
-            
+
+            // 🔴 خیلی مهم: مطمئن شو ImageList ست شده
+          
+
             foreach (var sprite in sprites.Where(s => s.IsVisible))
             {
                 var item = new ListViewItem(sprite.Name)
                 {
-                    Tag = sprite,
-                    // 🔧 این خط حیاتی را اضافه کنید:
-                    ImageIndex = SpriteThumbnails?.GetImageIndex(sprite.Id) ?? -1
+                    Tag = sprite
                 };
-                
+
+                // فقط کلید را ست کن، نه وابسته به index
+                if (!string.IsNullOrEmpty(sprite.Id))
+                {
+                    item.ImageKey = sprite.Id;
+                }
+
                 item.SubItems.Add($"{sprite.Bounds.X}, {sprite.Bounds.Y}");
                 item.SubItems.Add($"{sprite.Bounds.Width}×{sprite.Bounds.Height}");
+
                 SpriteListView.Items.Add(item);
             }
+
+            SpriteListView.EndUpdate();
+            SpriteListView.Refresh();
         }
-        
+
+
         public void UpdateStatus(string message)
         {
             if (StatusBar.Items.Count > 0)
@@ -240,98 +278,99 @@ namespace SpriteExtractor.Views
         }
 
         // این متد جدید را اضافه کنید:
-public void ScrollToSprite(Rectangle spriteBounds)
-{
-    if (ImagePanel == null || !ImagePanel.AutoScroll) return;
-    
-    try
-    {
-        // محاسبه موقعیت مرکز اسپرایت
-        int centerX = spriteBounds.X + (spriteBounds.Width / 2);
-        int centerY = spriteBounds.Y + (spriteBounds.Height / 2);
-        
-        // محاسبه offset برای اسکرول (مرکز کردن در viewport)
-        int scrollX = centerX - (ImagePanel.ClientSize.Width / 2);
-        int scrollY = centerY - (ImagePanel.ClientSize.Height / 2);
-        
-        // محدود کردن به محدوده‌های معتبر
-        scrollX = Math.Max(0, scrollX);
-        scrollY = Math.Max(0, scrollY);
-        
-        // اعمال اسکرول
-        ImagePanel.AutoScrollPosition = new Point(scrollX, scrollY);
-        ImagePanel.Invalidate(); // رندر مجدد
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Scroll error: {ex.Message}");
-    }
-}
+        public void ScrollToSprite(Rectangle spriteBounds)
+        {
+            if (ImagePanel == null || !ImagePanel.AutoScroll) return;
 
-            private void OnListViewSelectionChanged(object sender, EventArgs e)
+            try
             {
-                if (_presenter != null && _presenter.IsSuppressingListSelection) return;
+                // محاسبه موقعیت مرکز اسپرایت
+                int centerX = spriteBounds.X + (spriteBounds.Width / 2);
+                int centerY = spriteBounds.Y + (spriteBounds.Height / 2);
 
-                if (_presenter != null)
+                // محاسبه offset برای اسکرول (مرکز کردن در viewport)
+                int scrollX = centerX - (ImagePanel.ClientSize.Width / 2);
+                int scrollY = centerY - (ImagePanel.ClientSize.Height / 2);
+
+                // محدود کردن به محدوده‌های معتبر
+                scrollX = Math.Max(0, scrollX);
+                scrollY = Math.Max(0, scrollY);
+
+                // اعمال اسکرول
+                ImagePanel.AutoScrollPosition = new Point(scrollX, scrollY);
+                ImagePanel.Invalidate(); // رندر مجدد
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Scroll error: {ex.Message}");
+            }
+        }
+
+        private void OnListViewSelectionChanged(object sender, EventArgs e)
+        {
+            if (_presenter != null && _presenter.IsSuppressingListSelection) return;
+
+            if (_presenter != null)
+            {
+                if (SpriteListView.SelectedItems.Count > 0)
                 {
-                    if (SpriteListView.SelectedItems.Count > 0)
-                    {
-                        var sprite = SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
-                        _presenter.OnListViewItemSelected(sprite);
-                    }
-                    else
-                    {
-                        _presenter.OnListViewItemSelected(null);
-                    }
+                    var sprite = SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
+                    _presenter.OnListViewItemSelected(sprite);
+                }
+                else
+                {
+                    _presenter.OnListViewItemSelected(null);
                 }
             }
-            private void MainForm_KeyDown(object sender, KeyEventArgs e)
-            {
-                if (e.KeyCode == Keys.Delete)
-                {
-                    _presenter?.DeleteSelectedSprite();
-                    e.Handled = true;
-                }
-                else if (e.KeyCode == Keys.Escape)
-                {
-                    _presenter?.CancelCurrentOperation();
-                    e.Handled = true;
-                }
-                // داخل MainForm_KeyDown
-                if (e.Control && e.KeyCode == Keys.Z)
-                {
-                    _presenter?.Undo();
-                    e.Handled = true;
-                    return;
-                }
-                else if (e.Control && e.KeyCode == Keys.Y)
-                {
-                    _presenter?.Redo();
-                    e.Handled = true;
-                    return;
-                }
+        }
 
+        private void MainForm_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Delete)
+            {
+                _presenter?.DeleteSelectedSprite();
+                e.Handled = true;
             }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                _presenter?.CancelCurrentOperation();
+                e.Handled = true;
+            }
+            // داخل MainForm_KeyDown
+            if (e.Control && e.KeyCode == Keys.Z)
+            {
+                _presenter?.Undo();
+                e.Handled = true;
+                return;
+            }
+            else if (e.Control && e.KeyCode == Keys.Y)
+            {
+                _presenter?.Redo();
+                e.Handled = true;
+                return;
+            }
+
+        }
 
 
 
         // متد کمکی برای آپدیت تیک کنار رنگ انتخاب‌شده
-            private void UpdateHighlightColorMenu(ToolStripMenuItem menu, string selectedColorName)
+        private void UpdateHighlightColorMenu(ToolStripMenuItem menu, string selectedColorName)
+        {
+            foreach (var item in menu.DropDownItems)
             {
-                foreach (var item in menu.DropDownItems)
+                // 🔧 فقط آیتم‌هایی که ToolStripMenuItem هستند را بررسی کن
+                if (item is ToolStripMenuItem menuItem)
                 {
-                    // 🔧 فقط آیتم‌هایی که ToolStripMenuItem هستند را بررسی کن
-                    if (item is ToolStripMenuItem menuItem)
+                    // آیتم‌هایی که متن آنها "Custom Color..." نیست را چک کن
+                    if (menuItem.Text != "Custom Color...")
                     {
-                        // آیتم‌هایی که متن آنها "Custom Color..." نیست را چک کن
-                        if (menuItem.Text != "Custom Color...")
-                        {
-                            menuItem.Checked = (menuItem.Text == selectedColorName);
-                        }
+                        menuItem.Checked = (menuItem.Text == selectedColorName);
                     }
-                    // ToolStripSeparator را نادیده بگیر
                 }
+                // ToolStripSeparator را نادیده بگیر
             }
+        }
 
         private void OnListViewDoubleClick(object sender, MouseEventArgs e)
         {
@@ -340,18 +379,19 @@ public void ScrollToSprite(Rectangle spriteBounds)
             {
                 var sprite = item.Tag as SpriteDefinition;
                 _presenter?.FocusOnSprite(sprite);
-                
+
                 // اسکرول خودکار به موقعیت اسپرایت در پنل
                 // (نیاز به محاسبات Viewport دارد)
             }
         }
-                // در MainForm، رویداد FormClosing را هندل کنید
+        // در MainForm، رویداد FormClosing را هندل کنید
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             _presenter?.Cleanup();
             base.OnFormClosing(e);
         }
 
-      
+
+
     }
 }

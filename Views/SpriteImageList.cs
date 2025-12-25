@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -6,9 +5,8 @@ namespace SpriteExtractor.Views
 {
     public class SpriteImageList
     {
-        private ImageList _imageList;
-        private Dictionary<string, int> _spriteToIndexMap;
-        
+        private readonly ImageList _imageList;
+
         public SpriteImageList()
         {
             _imageList = new ImageList
@@ -16,42 +14,44 @@ namespace SpriteExtractor.Views
                 ColorDepth = ColorDepth.Depth32Bit,
                 ImageSize = new Size(48, 48)
             };
-            _spriteToIndexMap = new Dictionary<string, int>();
         }
-        
+
         public ImageList ImageList => _imageList;
-        
+
         public void AddOrUpdateThumbnail(string spriteId, Image thumbnail)
         {
-            if (_spriteToIndexMap.ContainsKey(spriteId))
+            if (string.IsNullOrEmpty(spriteId) || thumbnail == null) return;
+
+            // مقیاس کردن تصویر به اندازهٔ ImageList برای جلوگیری از مشکلات نمایش
+            Image toAdd = thumbnail;
+            if (thumbnail.Size != _imageList.ImageSize)
             {
-                _imageList.Images[_spriteToIndexMap[spriteId]] = thumbnail;
+                toAdd = new Bitmap(thumbnail, _imageList.ImageSize);
             }
-            else
-            {
-                _spriteToIndexMap[spriteId] = _imageList.Images.Count;
-                _imageList.Images.Add(thumbnail);
-            }
+
+            int existingIndex = _imageList.Images.IndexOfKey(spriteId);
+            if (existingIndex >= 0)
+                _imageList.Images.RemoveByKey(spriteId);
+
+            _imageList.Images.Add(spriteId, toAdd);
         }
-        
+
         public void RemoveThumbnail(string spriteId)
         {
-            if (_spriteToIndexMap.ContainsKey(spriteId))
-            {
-                _spriteToIndexMap.Remove(spriteId);
-            }
+            if (string.IsNullOrEmpty(spriteId)) return;
+            int idx = _imageList.Images.IndexOfKey(spriteId);
+            if (idx >= 0) _imageList.Images.RemoveByKey(spriteId);
         }
-        
+
         public int GetImageIndex(string spriteId)
         {
-            return _spriteToIndexMap.ContainsKey(spriteId) ? 
-                   _spriteToIndexMap[spriteId] : -1;
+            if (string.IsNullOrEmpty(spriteId)) return -1;
+            return _imageList.Images.IndexOfKey(spriteId);
         }
-        
+
         public void Clear()
         {
             _imageList.Images.Clear();
-            _spriteToIndexMap.Clear();
         }
     }
 }

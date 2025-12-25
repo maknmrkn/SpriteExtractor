@@ -35,6 +35,10 @@ namespace SpriteExtractor.Services
 
         public event Action StateChanged;
 
+        // new: detailed operation event so listeners know what happened (Execute/Undo/Redo/Clear)
+        public enum OperationType { Execute, Undo, Redo, Clear }
+        public event Action<OperationType> OperationPerformed;
+
         public CommandManager(int maxHistory = 100)
         {
             _maxHistory = Math.Max(1, maxHistory);
@@ -51,6 +55,7 @@ namespace SpriteExtractor.Services
             _redoStack.Clear();
             TrimHistory();
             StateChanged?.Invoke();
+            OperationPerformed?.Invoke(OperationType.Execute);
         }
 
         public void Undo()
@@ -60,6 +65,7 @@ namespace SpriteExtractor.Services
             cmd.Undo();
             _redoStack.Push(cmd);
             StateChanged?.Invoke();
+            OperationPerformed?.Invoke(OperationType.Undo);
         }
 
         public void Redo()
@@ -69,6 +75,7 @@ namespace SpriteExtractor.Services
             cmd.Execute();
             _undoStack.Push(cmd);
             StateChanged?.Invoke();
+            OperationPerformed?.Invoke(OperationType.Redo);
         }
 
         public void Clear()
@@ -76,6 +83,15 @@ namespace SpriteExtractor.Services
             _undoStack.Clear();
             _redoStack.Clear();
             StateChanged?.Invoke();
+            OperationPerformed?.Invoke(OperationType.Clear);
+        }
+
+        public void ClearHistoryOnly()
+        {
+            _undoStack.Clear();
+            _redoStack.Clear();
+            StateChanged?.Invoke();
+            OperationPerformed?.Invoke(OperationType.Clear);
         }
 
         private void TrimHistory()
