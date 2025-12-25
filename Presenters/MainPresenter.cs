@@ -51,6 +51,7 @@ namespace SpriteExtractor.Presenters
         private Rectangle _lastKnownBounds = Rectangle.Empty;
         private bool _isPropertyGridMonitoring = false;
         private Bitmap _loadedBitmap;
+        private int _spriteCounter = 1; // برای نام‌گذاری منحصربه‌فرد
 
         public MainPresenter(MainForm view)
         {
@@ -222,16 +223,15 @@ namespace SpriteExtractor.Presenters
             {
                 try
                 {
-                    // 🔧 تصویر قبلی را پاک کن
                     _loadedBitmap?.Dispose();
-
-                    // 🔧 بارگذاری تصویر با حفظ Alpha (شفافیت)
                     _loadedBitmap = LoadImageWithTransparency(dialog.FileName);
-
                     DebugImageTransparency(dialog.FileName);
 
                     _project.SourceImagePath = dialog.FileName;
                     _project.Sprites.Clear();
+
+                    // ✅ Reset کردن counter برای پروژه جدید
+                    _spriteCounter = 1;
 
                     _view.UpdateStatus($"Loaded: {Path.GetFileName(dialog.FileName)}");
                     _view.ImagePanel.Invalidate();
@@ -365,9 +365,16 @@ namespace SpriteExtractor.Presenters
 
 
         // حذف واقعی بدون مدیریت undo stack (private helper)
+        // حذف واقعی بدون مدیریت undo stack (private helper)
+        // ================== متد RemoveSpriteInternal اصلاح شده ==================
         private void RemoveSpriteInternal(SpriteDefinition sprite)
         {
             if (sprite == null) return;
+
+            // 🔑 استخراج Id (GUID منحصربه‌فرد) قبل از هر کار
+            string spriteId = sprite.Id; // این یک GUID است که هرگز تکرار نمی‌شود
+
+            System.Diagnostics.Debug.WriteLine($"🗑️ Removing sprite: {sprite.Name} with Id: {spriteId}");
 
             // پیدا کردن index فعلی در مدل قبل از حذف
             int modelIndex = -1;
@@ -380,28 +387,47 @@ namespace SpriteExtractor.Presenters
                 _project.Sprites.RemoveAt(modelIndex);
             }
 
-            // حذف thumbnail از ImageList (ایمن)
+            // 🎯 حذف thumbnail با استفاده از Id منحصربه‌فرد
             try
             {
-                var spriteKey = GetSpriteKey(sprite);
-                if (!string.IsNullOrEmpty(spriteKey))
-                    _view?.SpriteImageList?.RemoveThumbnail(spriteKey);
+                if (!string.IsNullOrEmpty(spriteId) && _view?.SpriteImageList != null)
+                {
+                    int beforeCount = _view.SpriteImageList.ImageList.Images.Count;
+                    _view.SpriteImageList.RemoveThumbnail(spriteId);
+                    int afterCount = _view.SpriteImageList.ImageList.Images.Count;
+
+                    System.Diagnostics.Debug.WriteLine($"   ImageList count: {beforeCount} → {afterCount}");
+                }
+
+                // همچنین از cache محلی هم حذف کن
+                if (_thumbnailCache.ContainsKey(sprite))
+                {
+                    _thumbnailCache[sprite]?.Dispose();
+                    _thumbnailCache.Remove(sprite);
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                // نگذار خطای حذف thumbnail باعث کرش شود
+                System.Diagnostics.Debug.WriteLine($"❌ Error removing thumbnail: {ex.Message}");
             }
 
-            // حذف آیتم از ListView در ویو با سرکوب رویدادها
+            // حذف آیتم از ListView
             if (_view?.SpriteListView != null)
             {
                 _view.SpriteListView.BeginUpdate();
                 try
                 {
                     ListViewItem toRemove = null;
+
+                    // 🔍 پیدا کردن آیتم بر اساس Tag (reference equality)
                     foreach (ListViewItem item in _view.SpriteListView.Items)
                     {
-                        if (item.Tag == sprite) { toRemove = item; break; }
+                        if (ReferenceEquals(item.Tag, sprite))
+                        {
+                            toRemove = item;
+                            System.Diagnostics.Debug.WriteLine($"   Found ListView item to remove: {item.Text}");
+                            break;
+                        }
                     }
 
                     if (toRemove != null)
@@ -412,14 +438,13 @@ namespace SpriteExtractor.Presenters
                             int removedIndex = _view.SpriteListView.Items.IndexOf(toRemove);
                             _view.SpriteListView.Items.Remove(toRemove);
 
-                            // انتخاب آیتم مجاور به صورت ایمن
+                            // انتخاب آیتم مجاور
                             if (_view.SpriteListView.Items.Count > 0)
                             {
-                                int selectIndex = Math.Min(Math.Max(0, removedIndex), _view.SpriteListView.Items.Count - 1);
+                                int selectIndex = Math.Min(removedIndex, _view.SpriteListView.Items.Count - 1);
                                 var newItem = _view.SpriteListView.Items[selectIndex];
                                 newItem.Selected = true;
 
-                                // همگام‌سازی انتخاب در presenter با آیتم جدید (اگر Tag موجود است)
                                 if (newItem.Tag is SpriteDefinition newSprite)
                                     UpdateSelectedSprite(newSprite);
                                 else
@@ -427,7 +452,6 @@ namespace SpriteExtractor.Presenters
                             }
                             else
                             {
-                                // لیست خالی شد
                                 UpdateSelectedSprite(null);
                             }
                         }
@@ -438,7 +462,6 @@ namespace SpriteExtractor.Presenters
                     }
                     else
                     {
-                        // اگر آیتمی در ListView پیدا نشد ولی selectedSprite همان بود، آن را پاک کن
                         if (_selectedSprite == sprite)
                             UpdateSelectedSprite(null);
                     }
@@ -450,20 +473,19 @@ namespace SpriteExtractor.Presenters
             }
             else
             {
-                // اگر ListView وجود ندارد ولی selectedSprite همان بود، آن را پاک کن
                 if (_selectedSprite == sprite)
                     UpdateSelectedSprite(null);
             }
 
-            // رفرش UI و پنل تصویر
+            // رفرش UI
             _view?.SpriteListView?.Refresh();
             _view?.ImagePanel?.Invalidate();
-            _view?.ImagePanel?.Update();
         }
 
 
 
 
+        // درج واقعی بدون مدیریت undo stack (private helper)
         // درج واقعی بدون مدیریت undo stack (private helper)
         private void InsertSpriteInternal(SpriteDefinition sprite, int index)
         {
@@ -472,15 +494,41 @@ namespace SpriteExtractor.Presenters
             // درج در مدل با clamp ایندکس
             if (_project?.Sprites != null)
             {
-                if (index < 0 || index > _project.Sprites.Count) index = _project.Sprites.Count;
+                if (index < 0 || index > _project.Sprites.Count)
+                    index = _project.Sprites.Count;
                 _project.Sprites.Insert(index, sprite);
             }
 
-            // کلید و thumbnail (توابع کمکی GetSpriteKey/TryGetThumbnail/GenerateThumbnail باید موجود باشند)
+            // 🔑 کلید و thumbnail
             var spriteKey = GetSpriteKey(sprite);
-            var thumb = TryGetThumbnail(sprite) ?? GenerateThumbnail(sprite);
 
-            // اضافه یا بروزرسانی thumbnail از طریق view (MainForm.SpriteImageList)
+            // 🎯 تولید thumbnail جدید یا استفاده از موجود
+            Image thumb = null;
+            try
+            {
+                // اگر در cache هست، استفاده کن
+                if (_thumbnailCache.ContainsKey(sprite) && _thumbnailCache[sprite] != null)
+                {
+                    thumb = _thumbnailCache[sprite];
+                }
+                // در غیر این صورت تولید کن
+                else if (_loadedBitmap != null && sprite.Bounds.Width > 0 && sprite.Bounds.Height > 0)
+                {
+                    thumb = GenerateThumbnailFromBitmap(sprite);
+                    _thumbnailCache[sprite] = thumb;
+                }
+                else
+                {
+                    thumb = GenerateThumbnail(sprite);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error generating thumbnail: {ex.Message}");
+                thumb = GenerateThumbnail(sprite); // fallback
+            }
+
+            // اضافه یا بروزرسانی thumbnail از طریق view
             if (_view?.SpriteImageList != null && !string.IsNullOrEmpty(spriteKey) && thumb != null)
             {
                 _view.SpriteImageList.AddOrUpdateThumbnail(spriteKey, thumb);
@@ -489,23 +537,18 @@ namespace SpriteExtractor.Presenters
             // درج در ListView
             if (_view?.SpriteListView != null)
             {
-                // جلوگیری از flicker هنگام تغییرات دسته‌ای
                 _view.SpriteListView.BeginUpdate();
                 try
                 {
-                    var item = new ListViewItem(sprite.Name ?? "Sprite") { Tag = sprite };
+                    var item = new ListViewItem(sprite.Name ?? "Sprite")
+                    {
+                        Tag = sprite,
+                        ImageKey = spriteKey  // 🔑 استفاده از کلید منحصربه‌فرد
+                    };
 
-                    // اگر کلید معتبر است، ImageKey را ست کن
-                    if (!string.IsNullOrEmpty(spriteKey))
-                        item.ImageKey = spriteKey;
-
-                    // دیباگ وضعیت اضافه‌شدن thumbnail و کلید (برای بررسی)
-                    System.Diagnostics.Debug.WriteLine($"thumbNull={thumb == null}, key={spriteKey}");
-                    System.Diagnostics.Debug.WriteLine($"ImageListCount={_view.SpriteImageList.ImageList.Images.Count}, IndexOfKey={_view.SpriteImageList.ImageList.Images.IndexOfKey(spriteKey)}");
-                    System.Diagnostics.Debug.WriteLine($"ItemImageKey={item.ImageKey}");
-
-                    // اطمینان از وجود حداقل 3 SubItem (Name, Position, Size)
-                    while (item.SubItems.Count < 3) item.SubItems.Add(string.Empty);
+                    // اطمینان از وجود حداقل 3 SubItem
+                    while (item.SubItems.Count < 3)
+                        item.SubItems.Add(string.Empty);
 
                     item.SubItems[1].Text = $"{sprite.Bounds.X}, {sprite.Bounds.Y}";
                     item.SubItems[2].Text = $"{sprite.Bounds.Width}×{sprite.Bounds.Height}";
@@ -513,7 +556,9 @@ namespace SpriteExtractor.Presenters
                     _suppressListSelectionChanged = true;
                     try
                     {
-                        if (index < 0 || index > _view.SpriteListView.Items.Count) index = _view.SpriteListView.Items.Count;
+                        if (index < 0 || index > _view.SpriteListView.Items.Count)
+                            index = _view.SpriteListView.Items.Count;
+
                         _view.SpriteListView.Items.Insert(index, item);
 
                         // انتخاب آیتم درج‌شده تا UI همگام شود
@@ -539,6 +584,56 @@ namespace SpriteExtractor.Presenters
             _view?.SpriteListView?.Refresh();
             _view?.ImagePanel?.Invalidate();
             _view?.ImagePanel?.Update();
+        }
+
+        // متد کمکی برای تولید thumbnail از bitmap اصلی
+        private Image GenerateThumbnailFromBitmap(SpriteDefinition sprite)
+        {
+            if (_loadedBitmap == null || sprite == null)
+                return GenerateThumbnail(sprite);
+
+            try
+            {
+                var thumbnail = new Bitmap(48, 48, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+                using (var g = Graphics.FromImage(thumbnail))
+                {
+                    if (_checkerboardBrush != null)
+                        g.FillRectangle(_checkerboardBrush, 0, 0, 48, 48);
+                    else
+                        g.Clear(Color.DarkGray);
+
+                    float scaleX = 46f / sprite.Bounds.Width;
+                    float scaleY = 46f / sprite.Bounds.Height;
+                    float scale = Math.Min(scaleX, scaleY);
+
+                    int destWidth = (int)(sprite.Bounds.Width * scale);
+                    int destHeight = (int)(sprite.Bounds.Height * scale);
+                    int destX = (48 - destWidth) / 2;
+                    int destY = (48 - destHeight) / 2;
+
+                    g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+
+                    if (sprite.Bounds.Width > 0 && sprite.Bounds.Height > 0)
+                    {
+                        g.DrawImage(_loadedBitmap,
+                            new Rectangle(destX + 1, destY + 1, destWidth - 2, destHeight - 2),
+                            sprite.Bounds,
+                            GraphicsUnit.Pixel);
+                    }
+
+                    using var pen = new Pen(Color.White, 1);
+                    g.DrawRectangle(pen, destX, destY, destWidth, destHeight);
+                }
+
+                return thumbnail;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error creating thumbnail: {ex.Message}");
+                return GenerateThumbnail(sprite);
+            }
         }
 
 
@@ -786,6 +881,7 @@ namespace SpriteExtractor.Presenters
             }
         }
 
+        // ================== متد OnImagePanelMouseUp اصلاح شده ==================
         private void OnImagePanelMouseUp(object sender, MouseEventArgs e)
         {
             // پایان رسم مستطیل
@@ -795,11 +891,14 @@ namespace SpriteExtractor.Presenters
 
                 if (_currentRect.Width > 5 && _currentRect.Height > 5)
                 {
+                    // ✅ استفاده از counter برای نام منحصربه‌فرد
                     var sprite = new SpriteDefinition
                     {
-                        Name = $"Sprite_{_project.Sprites.Count + 1}",
+                        Name = $"Sprite_{_spriteCounter}",
                         Bounds = _currentRect
                     };
+
+                    _spriteCounter++; // افزایش counter برای اسپرایت بعدی
 
                     _project.Sprites.Add(sprite);
                     _view.UpdateSpriteList(_project.Sprites);
@@ -819,8 +918,6 @@ namespace SpriteExtractor.Presenters
                 if (_selectedSprite != null)
                     UpdateThumbnailForSprite(_selectedSprite); // 📌 فقط Thumbnail این اسپرایت را آپدیت کن
                 _view.UpdateStatus($"Sprite updated. Position: ({_selectedSprite.Bounds.X}, {_selectedSprite.Bounds.Y}), Size: {_selectedSprite.Bounds.Width}x{_selectedSprite.Bounds.Height}");
-
-
             }
         }
 
@@ -1273,9 +1370,13 @@ namespace SpriteExtractor.Presenters
         private string GetSpriteKey(SpriteDefinition s)
         {
             if (s == null) return null;
-            // از Id استفاده کن (در مدل اضافه شده) یا Name یا GUID موقت 
-            if (!string.IsNullOrEmpty(s.Id)) return s.Id;
-            if (!string.IsNullOrEmpty(s.Name)) return s.Name;
+
+            // ✅ اولویت اول: استفاده از Id که GUID منحصربه‌فرد است
+            if (!string.IsNullOrEmpty(s.Id))
+                return s.Id;
+
+            // در صورتی که Id خالی باشد (نباید اتفاق بیفتد)
+            System.Diagnostics.Debug.WriteLine("⚠️ Warning: Sprite has empty Id!");
             return Guid.NewGuid().ToString();
         }
 
@@ -1348,25 +1449,25 @@ namespace SpriteExtractor.Presenters
             }
         }
 
-private void OnCommandOperationPerformed(CommandManager.OperationType op)
-{
-    if (op == CommandManager.OperationType.Undo ||
-        op == CommandManager.OperationType.Redo ||
-        op == CommandManager.OperationType.Clear)
-    {
-        // 1️⃣ بازسازی thumbnailها قبل از آپدیت لیست
-        if (_project?.Sprites != null)
+        private void OnCommandOperationPerformed(CommandManager.OperationType op)
         {
-            UpdateAllThumbnails();
+            if (op == CommandManager.OperationType.Undo ||
+                op == CommandManager.OperationType.Redo ||
+                op == CommandManager.OperationType.Clear)
+            {
+                // 1️⃣ بازسازی thumbnailها قبل از آپدیت لیست
+                if (_project?.Sprites != null)
+                {
+                    UpdateAllThumbnails();
+                }
+
+                // 2️⃣ حالا لیست را با thumbnailهای آماده آپدیت کن
+                _view?.UpdateSpriteList(_project?.Sprites ?? new List<SpriteDefinition>());
+
+                // 3️⃣ پنل تصویر را Invalidate کن
+                _view?.ImagePanel?.Invalidate();
+            }
         }
-
-        // 2️⃣ حالا لیست را با thumbnailهای آماده آپدیت کن
-        _view?.UpdateSpriteList(_project?.Sprites ?? new List<SpriteDefinition>());
-
-        // 3️⃣ پنل تصویر را Invalidate کن
-        _view?.ImagePanel?.Invalidate();
-    }
-}
 
 
 
