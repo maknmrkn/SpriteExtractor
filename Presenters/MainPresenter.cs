@@ -5,7 +5,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Reflection; // این خط حیاتی است
-using System.Threading.Tasks;  // این خط را اضافه کنید
+// using System.Threading.Tasks removed during refactor
 using System.Windows.Forms;
 using SpriteExtractor.Models;
 using SpriteExtractor.Services;
@@ -19,11 +19,13 @@ namespace SpriteExtractor.Presenters
 {
     public class MainPresenter
     {
-        private MainForm _view;
+        private Views.IMainView _view;
         private SpriteProject _project;
         private string _currentTool = "select";
         // بالای کلاس MainPresenter، کنار سایر فیلدها
         private readonly Dictionary<SpriteDefinition, Image> _thumbnailCache = new();
+        // نگهداری کلیدهای پایدار برای اسپرایت‌هایی که Id ندارند
+        private readonly Dictionary<SpriteDefinition, string> _spriteKeys = new();
 
         // متغیرهای مربوط به رسم مستطیل
         private Point _dragStart;
@@ -32,6 +34,13 @@ namespace SpriteExtractor.Presenters
 
         private bool _suppressListSelectionChanged = false;
         public bool IsSuppressingListSelection => _suppressListSelectionChanged;
+        // Internal accessors for incremental refactor
+        internal Views.IMainView View => _view;
+        internal SpriteProject Project => _project;
+        internal Services.CommandManager CommandManager => _commandManager;
+        internal Bitmap LoadedBitmap => _loadedBitmap;
+        internal TextureBrush CheckerboardBrush => _checkerboardBrush;
+        internal Dictionary<SpriteDefinition, Image> ThumbnailCache => _thumbnailCache;
         // Command manager
         private readonly Services.CommandManager _commandManager = new Services.CommandManager();
 
@@ -53,7 +62,7 @@ namespace SpriteExtractor.Presenters
         private Bitmap _loadedBitmap;
         private int _spriteCounter = 1; // برای نام‌گذاری منحصربه‌فرد
 
-        public MainPresenter(MainForm view)
+        public MainPresenter(Views.IMainView view)
         {
             _view = view;
             _project = new SpriteProject();
@@ -84,13 +93,14 @@ namespace SpriteExtractor.Presenters
             if (_selectedSprite.Bounds != _lastKnownBounds)
             {
                 _lastKnownBounds = _selectedSprite.Bounds;
-                _view.ImagePanel.Invalidate();
+                _view.InvalidateImagePanel();
                 UpdateListViewForSprite(_selectedSprite);
             }
         }
 
         private void SetupEventHandlers()
         {
+            // Event wiring still requires access to the panel control
             _view.ImagePanel.MouseDown += OnImagePanelMouseDown;
             _view.ImagePanel.MouseMove += OnImagePanelMouseMove;
             _view.ImagePanel.MouseUp += OnImagePanelMouseUp;
@@ -118,7 +128,7 @@ namespace SpriteExtractor.Presenters
 
                         // هایلایت متمایز (اختیاری - برای گام بعدی)
                         _focusedSprite = sprite;
-                        _view.ImagePanel.Invalidate();
+                        _view.InvalidateImagePanel();
 
                         _view.UpdateStatus($"Focused: {sprite.Name}");
                     }
@@ -132,7 +142,7 @@ namespace SpriteExtractor.Presenters
 
             // این متد با هر تغییر انتخاب (حتی تغییر بین X, Y, Width, Height) فراخوانی می‌شود
             // می‌توانیم هر بار پنل را رفرش کنیم تا تغییرات نمایش داده شوند
-            _view.ImagePanel.Invalidate();
+            _view.InvalidateImagePanel();
             UpdateListViewForSprite(_selectedSprite);
         }
 
@@ -146,14 +156,14 @@ namespace SpriteExtractor.Presenters
             if (propertyName == "X" || propertyName == "Y")
             {
                 // موقعیت اسپرایت در صحنه تغییر کند
-                _view.ImagePanel.Invalidate();
+                _view.InvalidateImagePanel();
                 UpdateListViewForSprite(_selectedSprite);
             }
             // 🔧 اضافه کردن بررسی تغییرات اندازه (Width, Height)
             else if (propertyName == "Width" || propertyName == "Height")
             {
                 // اندازه اسپرایت در صحنه تغییر کند
-                _view.ImagePanel.Invalidate();
+                _view.InvalidateImagePanel();
                 UpdateListViewForSprite(_selectedSprite);
                 _view.UpdateStatus($"Size changed to {_selectedSprite.Bounds.Width}x{_selectedSprite.Bounds.Height}");
             }
@@ -211,7 +221,7 @@ namespace SpriteExtractor.Presenters
         }
 
         // عملیات فایل - نسخه اصلاح شده بدون فریز
-        public async void OpenImage()
+        public void OpenImage()
         {
             using var dialog = new OpenFileDialog
             {
@@ -234,9 +244,10 @@ namespace SpriteExtractor.Presenters
                     _spriteCounter = 1;
 
                     _view.UpdateStatus($"Loaded: {Path.GetFileName(dialog.FileName)}");
-                    _view.ImagePanel.Invalidate();
+                    _view.InvalidateImagePanel();
 
-                    UpdateAllThumbnails();
+                    // Delegate full thumbnail rebuild to SpritePresenter (async)
+                    _ = Presenters.SpritePresenter.UpdateAllThumbnailsAsync(this);
                 }
                 catch (Exception ex)
                 {
@@ -265,56 +276,15 @@ namespace SpriteExtractor.Presenters
 
         public void SaveProject()
         {
-            if (string.IsNullOrEmpty(_project.SourceImagePath))
-            {
-                MessageBox.Show("Please load an image first", "Warning",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            using var dialog = new SaveFileDialog
-            {
-                Filter = "Sprite Project|*.spriteproj|JSON|*.json",
-                DefaultExt = ".spriteproj",
-                FileName = _project.ProjectName
-            };
-
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                try
-                {
-                    ProjectService.SaveProject(_project, dialog.FileName);
-                    _view.UpdateStatus($"Project saved: {Path.GetFileName(dialog.FileName)}");
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"خطا در ذخیره پروژه: {ex.Message}", "خطا",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
+            Presenters.ProjectPresenter.SaveProject(_project, _view);
         }
 
         public void LoadProject()
         {
-            using var dialog = new OpenFileDialog
+            var proj = Presenters.ProjectPresenter.LoadProject(_view);
+            if (proj != null)
             {
-                Filter = "Sprite Project|*.spriteproj|JSON|*.json|All Files|*.*"
-            };
-
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                try
-                {
-                    _project = ProjectService.LoadProject(dialog.FileName);
-                    _view.UpdateSpriteList(_project.Sprites);
-                    _view.UpdateStatus($"Project loaded: {Path.GetFileName(dialog.FileName)}");
-                    _view.ImagePanel.Invalidate();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error loading project: {ex.Message}", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                _project = proj;
             }
         }
 
@@ -322,40 +292,12 @@ namespace SpriteExtractor.Presenters
         public void SetToolMode(string tool)
         {
             _currentTool = tool;
-            _view.UpdateStatus($"Tool: {tool}");
+                _view.UpdateStatus($"Tool: {tool}");
         }
 
         public void DeleteSelectedSprite()
         {
-            var sprite = _selectedSprite;
-            if (sprite == null && _view?.SpriteListView?.SelectedItems.Count > 0)
-                sprite = _view.SpriteListView.SelectedItems[0].Tag as SpriteDefinition;
-
-            if (sprite == null) return;
-
-            // قبل از حذف، index را محاسبه و ذخیره کن
-            int index = -1;
-            if (_project?.Sprites != null)
-            {
-                index = _project.Sprites.IndexOf(sprite);
-                if (index < 0) index = -1; // اگر پیدا نشد، -1 نگه دار
-            }
-
-
-            var result = System.Windows.Forms.MessageBox.Show($"Delete sprite '{sprite.Name}'?", "Confirm delete", System.Windows.Forms.MessageBoxButtons.YesNo, System.Windows.Forms.MessageBoxIcon.Warning);
-            if (result != System.Windows.Forms.DialogResult.Yes) return;
-
-            // ساخت DelegateCommand با اکشن‌های حذف و بازگردانی
-            var cmd = new Services.DelegateCommand(
-                execute: () => RemoveSpriteInternal(sprite),
-                undo: () => InsertSpriteInternal(sprite, index),
-                description: $"Delete '{sprite.Name}'"
-            );
-
-            _commandManager.ExecuteCommand(cmd);
-            // Rebuild the list to reset thumbnail cache after removal
-            _view.UpdateSpriteList(_project.Sprites);
-            _view?.UpdateStatus($"Sprite '{sprite.Name}' deleted");
+            Presenters.SpritePresenter.DeleteSelectedSprite(this);
         }
         // اضافه کن در MainPresenter.cs، بعد از DeleteSelectedSprite()
         public void Undo() => _commandManager.Undo();
@@ -369,14 +311,14 @@ namespace SpriteExtractor.Presenters
         // حذف واقعی بدون مدیریت undo stack (private helper)
         // حذف واقعی بدون مدیریت undo stack (private helper)
         // ================== متد RemoveSpriteInternal اصلاح شده ==================
-        private void RemoveSpriteInternal(SpriteDefinition sprite)
+        internal void RemoveSpriteInternal(SpriteDefinition sprite)
         {
             if (sprite == null) return;
 
-            // 🔑 استخراج Id (GUID منحصربه‌فرد) قبل از هر کار
-            string spriteId = sprite.Id; // این یک GUID است که هرگز تکرار نمی‌شود
+            // 🔑 استخراج کلید پایدار برای thumbnail قبل از هر کار
+            string spriteKey = !string.IsNullOrEmpty(sprite.Id) ? sprite.Id : (_spriteKeys.TryGetValue(sprite, out var k) ? k : null);
 
-            System.Diagnostics.Debug.WriteLine($"🗑️ Removing sprite: {sprite.Name} with Id: {spriteId}");
+            System.Diagnostics.Debug.WriteLine($"🗑️ Removing sprite: {sprite.Name} with key: {spriteKey ?? "(none)"}");
 
             // پیدا کردن index فعلی در مدل قبل از حذف
             int modelIndex = -1;
@@ -392,13 +334,9 @@ namespace SpriteExtractor.Presenters
             // 🎯 حذف thumbnail با استفاده از Id منحصربه‌فرد
             try
             {
-                if (!string.IsNullOrEmpty(spriteId) && _view?.SpriteImageList != null)
+                if (!string.IsNullOrEmpty(spriteKey))
                 {
-                    int beforeCount = _view.SpriteImageList.ImageList.Images.Count;
-                    _view.SpriteImageList.RemoveThumbnail(spriteId);
-                    int afterCount = _view.SpriteImageList.ImageList.Images.Count;
-
-                    System.Diagnostics.Debug.WriteLine($"   ImageList count: {beforeCount} → {afterCount}");
+                    _view.RemoveSpriteThumbnail(spriteKey);
                 }
 
                 // همچنین از cache محلی هم حذف کن
@@ -407,6 +345,10 @@ namespace SpriteExtractor.Presenters
                     _thumbnailCache[sprite]?.Dispose();
                     _thumbnailCache.Remove(sprite);
                 }
+
+                // و اگر کلید موقت در map داشتیم، آن را پاک کن
+                if (_spriteKeys.ContainsKey(sprite))
+                    _spriteKeys.Remove(sprite);
             }
             catch (Exception ex)
             {
@@ -414,9 +356,9 @@ namespace SpriteExtractor.Presenters
             }
 
             // حذف آیتم از ListView
-            if (_view?.SpriteListView != null)
-            {
-                _view.SpriteListView.BeginUpdate();
+                if (_view?.SpriteListView != null)
+                {
+                _view.BeginUpdateSpriteList();
                 try
                 {
                     ListViewItem toRemove = null;
@@ -472,7 +414,7 @@ namespace SpriteExtractor.Presenters
                 }
                 finally
                 {
-                    _view.SpriteListView.EndUpdate();
+                    _view.EndUpdateSpriteList();
                 }
             }
             else
@@ -483,7 +425,7 @@ namespace SpriteExtractor.Presenters
 
             // رفرش UI
             _view?.SpriteListView?.Refresh();
-            _view?.ImagePanel?.Invalidate();
+            _view?.InvalidateImagePanel();
         }
 
 
@@ -491,7 +433,7 @@ namespace SpriteExtractor.Presenters
 
         // درج واقعی بدون مدیریت undo stack (private helper)
         // درج واقعی بدون مدیریت undo stack (private helper)
-        private void InsertSpriteInternal(SpriteDefinition sprite, int index)
+        internal void InsertSpriteInternal(SpriteDefinition sprite, int index)
         {
             if (sprite == null) return;
 
@@ -503,45 +445,17 @@ namespace SpriteExtractor.Presenters
                 _project.Sprites.Insert(index, sprite);
             }
 
-            // 🔑 کلید و thumbnail
-            var spriteKey = GetSpriteKey(sprite);
+                    var spriteKey = GetSpriteKey(sprite);
 
-            // 🎯 تولید thumbnail جدید یا استفاده از موجود
-            Image thumb = null;
-            try
-            {
-                // اگر در cache هست، استفاده کن
-                if (_thumbnailCache.ContainsKey(sprite) && _thumbnailCache[sprite] != null)
-                {
-                    thumb = _thumbnailCache[sprite];
-                }
-                // در غیر این صورت تولید کن
-                else if (_loadedBitmap != null && sprite.Bounds.Width > 0 && sprite.Bounds.Height > 0)
-                {
-                    thumb = GenerateThumbnailFromBitmap(sprite);
-                    _thumbnailCache[sprite] = thumb;
-                }
-                else
-                {
-                    thumb = GenerateThumbnail(sprite);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error generating thumbnail: {ex.Message}");
-                thumb = GenerateThumbnail(sprite); // fallback
-            }
-
-            // اضافه یا بروزرسانی thumbnail از طریق view
-            if (_view?.SpriteImageList != null && !string.IsNullOrEmpty(spriteKey) && thumb != null)
-            {
-                _view.SpriteImageList.AddOrUpdateThumbnail(spriteKey, thumb);
-            }
+                    // Delegate thumbnail creation/registration to SpritePresenter (async)
+                    _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, sprite, spriteKey);
 
             // درج در ListView
             if (_view?.SpriteListView != null)
             {
-                _view.SpriteListView.BeginUpdate();
+                // اطمینان از اینکه ImageList به ListView اختصاص داده شده است
+                _view.EnsureSpriteImageListAssigned();
+                _view.BeginUpdateSpriteList();
                 try
                 {
                     var item = new ListViewItem(sprite.Name ?? "Sprite")
@@ -576,7 +490,7 @@ namespace SpriteExtractor.Presenters
                 }
                 finally
                 {
-                    _view.SpriteListView.EndUpdate();
+                    _view.EndUpdateSpriteList();
                 }
             }
 
@@ -586,59 +500,12 @@ namespace SpriteExtractor.Presenters
 
             // رفرش صریح UI و پنل تصویر
             _view?.SpriteListView?.Refresh();
-            _view?.ImagePanel?.Invalidate();
-            _view?.ImagePanel?.Update();
+            _view?.InvalidateImagePanel();
+            _view?.BeginInvokeAction(() => { /* no-op update wrapper if needed */ });
         }
 
         // متد کمکی برای تولید thumbnail از bitmap اصلی
-        private Image GenerateThumbnailFromBitmap(SpriteDefinition sprite)
-        {
-            if (_loadedBitmap == null || sprite == null)
-                return GenerateThumbnail(sprite);
-
-            try
-            {
-                var thumbnail = new Bitmap(48, 48, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-
-                using (var g = Graphics.FromImage(thumbnail))
-                {
-                    if (_checkerboardBrush != null)
-                        g.FillRectangle(_checkerboardBrush, 0, 0, 48, 48);
-                    else
-                        g.Clear(Color.DarkGray);
-
-                    float scaleX = 46f / sprite.Bounds.Width;
-                    float scaleY = 46f / sprite.Bounds.Height;
-                    float scale = Math.Min(scaleX, scaleY);
-
-                    int destWidth = (int)(sprite.Bounds.Width * scale);
-                    int destHeight = (int)(sprite.Bounds.Height * scale);
-                    int destX = (48 - destWidth) / 2;
-                    int destY = (48 - destHeight) / 2;
-
-                    g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-
-                    if (sprite.Bounds.Width > 0 && sprite.Bounds.Height > 0)
-                    {
-                        g.DrawImage(_loadedBitmap,
-                            new Rectangle(destX + 1, destY + 1, destWidth - 2, destHeight - 2),
-                            sprite.Bounds,
-                            GraphicsUnit.Pixel);
-                    }
-
-                    using var pen = new Pen(Color.White, 1);
-                    g.DrawRectangle(pen, destX, destY, destWidth, destHeight);
-                }
-
-                return thumbnail;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error creating thumbnail: {ex.Message}");
-                return GenerateThumbnail(sprite);
-            }
-        }
+        // Thumbnail generation now delegated to Services.ThumbnailService and Presenters.SpritePresenter.
 
 
 
@@ -656,7 +523,7 @@ namespace SpriteExtractor.Presenters
                 {
                     _view.ScrollToSprite(sprite.Bounds);
                     _focusedSprite = sprite; // تنظیم focus
-                    _view.ImagePanel.Invalidate(); // رندر مجدد برای هایلایت
+                    _view.InvalidateImagePanel(); // رندر مجدد برای هایلایت
                 }
             }
             else
@@ -763,7 +630,7 @@ namespace SpriteExtractor.Presenters
                     if (_activeResizeHandle != ResizeHandle.None)
                     {
                         _currentSelectionMode = SelectionMode.Resizing;
-                        _view.ImagePanel.Invalidate();
+                        _view.InvalidateImagePanel();
                         return;
                     }
                 }
@@ -784,7 +651,7 @@ namespace SpriteExtractor.Presenters
                     _currentSelectionMode = SelectionMode.None;
                 }
 
-                _view.ImagePanel.Invalidate();
+                _view.InvalidateImagePanel();
             }
         }
 
@@ -801,7 +668,7 @@ namespace SpriteExtractor.Presenters
                     Math.Abs(e.X - _dragStart.X),
                     Math.Abs(e.Y - _dragStart.Y)
                 );
-                _view.ImagePanel.Invalidate();
+                _view.InvalidateImagePanel();
                 return;
             }
 
@@ -823,7 +690,7 @@ namespace SpriteExtractor.Presenters
                 bounds.Y += deltaY;
                 _selectedSprite.Bounds = bounds;
 
-                _view.ImagePanel.Invalidate();
+                _view.InvalidateImagePanel();
                 RefreshPropertyGrid();
                 _lastMousePosition = e.Location;
             }
@@ -879,7 +746,7 @@ namespace SpriteExtractor.Presenters
                 if (bounds.Height < 5) bounds.Height = 5;
 
                 _selectedSprite.Bounds = bounds;
-                _view.ImagePanel.Invalidate();
+                _view.InvalidateImagePanel();
                 RefreshPropertyGrid();
                 _lastMousePosition = e.Location;
             }
@@ -904,13 +771,14 @@ namespace SpriteExtractor.Presenters
 
                     _spriteCounter++; // افزایش counter برای اسپرایت بعدی
 
-                    _project.Sprites.Add(sprite);
-                    _view.UpdateSpriteList(_project.Sprites);
-                    UpdateAllThumbnails(); // 📌 ساخت Thumbnail + آپدیت لیست
+                    // Use the SpritePresenter helper so insertion logic is centralized
+                    Presenters.SpritePresenter.InsertNewSprite(this, sprite);
+                    // Kick off thumbnail creation asynchronously (fire-and-forget)
+                    _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, sprite, GetSpriteKey(sprite));
                 }
 
                 _currentRect = Rectangle.Empty;
-                _view.ImagePanel.Invalidate();
+                _view.InvalidateImagePanel();
             }
 
             // پایان حالت‌های Move و Resize
@@ -920,7 +788,11 @@ namespace SpriteExtractor.Presenters
                 _activeResizeHandle = ResizeHandle.None;
                 _view.ImagePanel.Cursor = Cursors.Default;
                 if (_selectedSprite != null)
-                    UpdateThumbnailForSprite(_selectedSprite); // 📌 فقط Thumbnail این اسپرایت را آپدیت کن
+                    // Update thumbnail for selected sprite via SpritePresenter (async)
+                    {
+                        var key = GetSpriteKey(_selectedSprite);
+                        _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, _selectedSprite, key);
+                    }
                 _view.UpdateStatus($"Sprite updated. Position: ({_selectedSprite.Bounds.X}, {_selectedSprite.Bounds.Y}), Size: {_selectedSprite.Bounds.Width}x{_selectedSprite.Bounds.Height}");
             }
         }
@@ -928,7 +800,7 @@ namespace SpriteExtractor.Presenters
         public void SetHighlightColor(Color color)
         {
             _project.Settings.HighlightColor = color;
-            _view.ImagePanel.Invalidate(); // رندر مجدد برای اعمال رنگ جدید
+            _view.InvalidateImagePanel(); // رندر مجدد برای اعمال رنگ جدید
 
             // ذخیره در تنظیمات کاربر (اختیاری)
             //Properties.Settings.Default.HighlightColor = color;
@@ -1169,90 +1041,15 @@ namespace SpriteExtractor.Presenters
         }
         // این متد را به MainPresenter اضافه کنید
 
-        private void UpdateThumbnailForSprite(SpriteDefinition sprite)
-        {
-            if (sprite == null || _loadedBitmap == null) return;
-
-            try
-            {
-                var thumbnail = new Bitmap(48, 48, PixelFormat.Format32bppArgb);
-
-                using (var g = Graphics.FromImage(thumbnail))
-                {
-                    // ۱. پس‌زمینه شطرنجی برای Thumbnail
-                    if (_checkerboardBrush != null)
-                    {
-                        g.FillRectangle(_checkerboardBrush, 0, 0, 48, 48);
-                    }
-                    else
-                    {
-                        g.Clear(Color.DarkGray);
-                    }
-
-                    // ۲. محاسبه scale
-                    float scaleX = 46f / sprite.Bounds.Width;
-                    float scaleY = 46f / sprite.Bounds.Height;
-                    float scale = Math.Min(scaleX, scaleY);
-
-                    int destWidth = (int)(sprite.Bounds.Width * scale);
-                    int destHeight = (int)(sprite.Bounds.Height * scale);
-                    int destX = (48 - destWidth) / 2;
-                    int destY = (48 - destHeight) / 2;
-
-                    // ۳. تنظیمات برای حفظ شفافیت
-                    g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-
-                    // ۴. رسم ناحیه اسپرایت
-                    if (sprite.Bounds.Width > 0 && sprite.Bounds.Height > 0)
-                    {
-                        g.DrawImage(_loadedBitmap,
-                            new Rectangle(destX + 1, destY + 1, destWidth - 2, destHeight - 2),
-                            sprite.Bounds,
-                            GraphicsUnit.Pixel);
-                    }
-
-                    // ۵. حاشیه سفید دور Thumbnail
-                    using var pen = new Pen(Color.White, 1);
-                    g.DrawRectangle(pen, destX, destY, destWidth, destHeight);
-                }
-
-                // ذخیره Thumbnail
-                _view.SpriteThumbnails.AddOrUpdateThumbnail(sprite.Id, thumbnail);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error creating thumbnail: {ex.Message}");
-            }
-        }
-
-        private void UpdateAllThumbnails()
-        {
-            if (string.IsNullOrEmpty(_project.SourceImagePath)) return;
-
-            try
-            {
-                _view.SpriteThumbnails.Clear();
-
-                foreach (var sprite in _project.Sprites)
-                {
-                    UpdateThumbnailForSprite(sprite);
-                }
-
-                _view.UpdateSpriteList(_project.Sprites);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error updating thumbnails: {ex.Message}");
-            }
-        }
+        // Thumbnail generation and management are delegated to Presenters.SpritePresenter
+        // and Services.ThumbnailService. Legacy per-presenter thumbnail helpers removed.
 
         public void OnListViewItemSelected(SpriteDefinition sprite)
         {
             if (_suppressListSelectionChanged) return;
             if (sprite == _selectedSprite) return;
             UpdateSelectedSprite(sprite); // UpdateSelectedSprite باید null-safe باشد
-            _view?.ImagePanel?.Invalidate();
+            _view?.InvalidateImagePanel();
         }
 
         // اضافه کن داخل کلاس MainPresenter (بعد از OnListViewItemSelected یا قبل از OpenImage)
@@ -1274,7 +1071,7 @@ namespace SpriteExtractor.Presenters
             _isPropertyGridMonitoring = false;
 
             // رفرش نمای تصویر و وضعیت
-            _view?.ImagePanel?.Invalidate();
+            _view?.InvalidateImagePanel();
             _view?.UpdateStatus("Operation cancelled");
         }
 
@@ -1288,7 +1085,7 @@ namespace SpriteExtractor.Presenters
                 UpdateSelectedSprite(sprite);
 
                 // رندر مجدد برای اعمال هایلایت
-                _view.ImagePanel.Invalidate();
+                _view.InvalidateImagePanel();
 
                 // نمایش پیام وضعیت
                 _view.UpdateStatus($"Focus on: {sprite.Name} (Double-click)");
@@ -1362,15 +1159,6 @@ namespace SpriteExtractor.Presenters
 
             return pattern;
         }
-        private Image EnsureThumbnail(SpriteDefinition s)
-        {
-            if (s.Thumbnail == null)
-                s.Thumbnail = GenerateThumbnail(s); // متد خودت برای ساخت thumbnail
-            return s.Thumbnail;
-        }
-
-
-
         private string GetSpriteKey(SpriteDefinition s)
         {
             if (s == null) return null;
@@ -1379,79 +1167,15 @@ namespace SpriteExtractor.Presenters
             if (!string.IsNullOrEmpty(s.Id))
                 return s.Id;
 
-            // در صورتی که Id خالی باشد (نباید اتفاق بیفتد)
-            System.Diagnostics.Debug.WriteLine("⚠️ Warning: Sprite has empty Id!");
-            return Guid.NewGuid().ToString();
+            if (_spriteKeys.TryGetValue(s, out var existing))
+                return existing;
+
+            var newId = Guid.NewGuid().ToString();
+            _spriteKeys[s] = newId;
+            return newId;
         }
 
-
-        private Image TryGetThumbnail(SpriteDefinition s)
-        {
-            if (s == null) return null;
-            // اگر مدل پراپرتی Thumbnail دارد، از آن استفاده کن 
-            try
-            {
-                var prop = s.GetType().GetProperty("Thumbnail", BindingFlags.Public | BindingFlags.Instance);
-                if (prop != null)
-                {
-                    var img = prop.GetValue(s) as Image;
-                    if (img != null) return img;
-                }
-            }
-            catch { /* ignore */ }
-            // اگر کش محلی داریم، برگردان 
-            if (_thumbnailCache.TryGetValue(s, out var cached) && cached != null) return cached;
-            return null;
-        }
-
-        private Image GenerateThumbnail(SpriteDefinition sprite)
-        {
-            const int w = 48, h = 48;
-            var bmp = new Bitmap(w, h);
-            using (var g = Graphics.FromImage(bmp))
-            {
-                g.Clear(Color.Transparent);
-                using var pen = new Pen(Color.Gray);
-                g.DrawRectangle(pen, 1, 1, w - 3, h - 3);
-            }
-            return bmp;
-        }
-        // بازسازی (rebuild) تامبنیل‌ها از مدل فعلی و اطمینان از انتساب ImageList به ListView
-        private void RebuildThumbnailsFromModel()
-        {
-            if (_view == null || _project == null) return;
-
-            // پاک کن همه تامبنیل‌ها
-            _view.SpriteImageList?.Clear();
-
-            // دوباره برای هر اسپرایت فعلی، thumbnail بساز/اضافه کن
-            if (_project.Sprites != null)
-            {
-                foreach (var sprite in _project.Sprites)
-                {
-                    try
-                    {
-                        var key = GetSpriteKey(sprite);
-                        var thumb = TryGetThumbnail(sprite) ?? GenerateThumbnail(sprite);
-                        if (!string.IsNullOrEmpty(key) && thumb != null)
-                        {
-                            _view.SpriteImageList.AddOrUpdateThumbnail(key, thumb);
-                        }
-                    }
-                    catch
-                    {
-                        // از کرش جلوگیری کن؛ لاگ بگیری کافی است
-                        System.Diagnostics.Debug.WriteLine("Failed to rebuild thumbnail for a sprite.");
-                    }
-                }
-            }
-
-            // مطمئن شو ListView حتماً به همان ImageList اشاره می‌کند
-            if (_view.SpriteListView != null && _view.SpriteImageList != null)
-            {
-                _view.SpriteListView.SmallImageList = _view.SpriteImageList.ImageList;
-            }
-        }
+                // Legacy thumbnail helpers removed. Use Presenters.SpritePresenter for thumbnail operations.
 
         private void OnCommandOperationPerformed(CommandManager.OperationType op)
         {
@@ -1462,23 +1186,17 @@ namespace SpriteExtractor.Presenters
                 // 1️⃣ بازسازی thumbnailها قبل از آپدیت لیست
                 if (_project?.Sprites != null)
                 {
-                    UpdateAllThumbnails();
+                    _ = Presenters.SpritePresenter.UpdateAllThumbnailsAsync(this);
                 }
 
                 // 2️⃣ حالا لیست را با thumbnailهای آماده آپدیت کن
                 _view?.UpdateSpriteList(_project?.Sprites ?? new List<SpriteDefinition>());
 
                 // 3️⃣ پنل تصویر را Invalidate کن
-                _view?.ImagePanel?.Invalidate();
+                _view?.InvalidateImagePanel();
             }
         }
 
-
-
-
-
-
-        private TextureBrush _checkerboardBrush = null;
-
+            private TextureBrush _checkerboardBrush = null;
+        }
     }
-}
