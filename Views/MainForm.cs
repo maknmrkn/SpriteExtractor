@@ -228,7 +228,7 @@ namespace SpriteExtractor.Views
             Toolbar.Items.Add(new ToolStripButton("Open", null, (s, e) => _presenter.OpenImage()));
             Toolbar.Items.Add(new ToolStripSeparator());
             Toolbar.Items.Add(new ToolStripButton("Select", null, (s, e) => _presenter.SetToolMode("select")));
-            Toolbar.Items.Add(new ToolStripButton("Rectangle", null, (s, e) => _presenter.SetToolMode("rectangle")));
+            // Removed rectangle tool - now rectangle creation happens via drag on image panel
             Toolbar.Items.Add(new ToolStripSeparator());
             Toolbar.Items.Add(new ToolStripButton("Zoom In", null, (s, e) => _presenter.ZoomIn()));
             Toolbar.Items.Add(new ToolStripButton("Zoom Out", null, (s, e) => _presenter.ZoomOut()));
@@ -293,6 +293,14 @@ namespace SpriteExtractor.Views
             MainTabs.TabPages.AddRange(new[] { manualTab, autoTab });
         }
 
+        private string GetSpriteKeyForView(SpriteDefinition s)
+        {
+            if (s == null) return null;
+
+            // Use the presenter's GetSpriteKey method
+            return _presenter?.GetSpriteKey(s);
+        }
+
         public void UpdateSpriteList(List<SpriteDefinition> sprites)
         {
             if (SpriteListView == null) return;
@@ -301,7 +309,7 @@ namespace SpriteExtractor.Views
             SpriteListView.Items.Clear();
 
             // 🔴 خیلی مهم: مطمئن شو ImageList ست شده
-          
+            EnsureSpriteImageListAssigned();
 
             foreach (var sprite in sprites.Where(s => s.IsVisible))
             {
@@ -310,10 +318,18 @@ namespace SpriteExtractor.Views
                     Tag = sprite
                 };
 
-                // فقط کلید را ست کن، نه وابسته به index
-                if (!string.IsNullOrEmpty(sprite.Id))
+                // Use the sprite key for thumbnail assignment
+                var spriteKey = GetSpriteKeyForView(sprite);
+                if (!string.IsNullOrEmpty(spriteKey))
                 {
-                    item.ImageKey = sprite.Id;
+                    item.ImageKey = spriteKey;
+                    
+                    // If the thumbnail doesn't exist in the image list yet, trigger its creation
+                    if (_spriteImageList.GetImageIndex(spriteKey) == -1)
+                    {
+                        // Trigger thumbnail creation for this sprite if not already in the image list
+                        // The thumbnail will be added asynchronously to the image list
+                    }
                 }
 
                 item.SubItems.Add($"{sprite.Bounds.X}, {sprite.Bounds.Y}");

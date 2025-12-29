@@ -47,8 +47,6 @@ namespace SpriteExtractor.Presenters
 
             cmdManager.ExecuteCommand(cmd);
 
-            // Rebuild UI state
-            view.UpdateSpriteList(project.Sprites);
             view?.UpdateStatus($"Sprite '{sprite.Name}' deleted");
         }
 
@@ -63,7 +61,12 @@ namespace SpriteExtractor.Presenters
             if (main == null || sprite == null) return;
             var project = main.Project;
             int index = project?.Sprites?.Count ?? 0;
+            // Insert the sprite into the project first
             main.InsertSpriteInternal(sprite, index);
+            
+            // Ensure thumbnail is created before UI list rebuilds
+            var key = main.GetSpriteKey(sprite);
+            _ = CreateOrUpdateThumbnailAsync(main, sprite, key);
         }
 
         public static void RemoveSprite(MainPresenter main, SpriteDefinition sprite)
@@ -124,7 +127,7 @@ namespace SpriteExtractor.Presenters
 
                 foreach (var sprite in project.Sprites)
                 {
-                    var key = !string.IsNullOrEmpty(sprite.Id) ? sprite.Id : Guid.NewGuid().ToString();
+                    var key = main.GetSpriteKey(sprite); // Use the consistent key from main presenter
                     // run sequentially to avoid creating too many concurrent bitmaps
                     await CreateOrUpdateThumbnailAsync(main, sprite, key).ConfigureAwait(false);
                 }

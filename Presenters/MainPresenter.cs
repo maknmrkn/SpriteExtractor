@@ -11,10 +11,6 @@ using SpriteExtractor.Models;
 using SpriteExtractor.Services;
 using SpriteExtractor.Views;
 
-
-
-
-
 namespace SpriteExtractor.Presenters
 {
     public class MainPresenter
@@ -43,9 +39,6 @@ namespace SpriteExtractor.Presenters
         internal Dictionary<SpriteDefinition, Image> ThumbnailCache => _thumbnailCache;
         // Command manager
         private readonly Services.CommandManager _commandManager = new Services.CommandManager();
-
-
-
         private SpriteDefinition _focusedSprite = null; // برای مدیریت focus
         public enum SelectionMode { None, Drawing, Moving, Resizing }
         public enum ResizeHandle { None, TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left }
@@ -61,7 +54,6 @@ namespace SpriteExtractor.Presenters
         private bool _isPropertyGridMonitoring = false;
         private Bitmap _loadedBitmap;
         private int _spriteCounter = 1; // برای نام‌گذاری منحصربه‌فرد
-
         public MainPresenter(Views.IMainView view)
         {
             _view = view;
@@ -75,9 +67,6 @@ namespace SpriteExtractor.Presenters
             SetupDoubleClickHandler();
 
         }
-
-
-
         private void SetupPropertyGridTimer()
         {
             _propertyChangeTimer = new System.Windows.Forms.Timer();
@@ -292,7 +281,7 @@ namespace SpriteExtractor.Presenters
         public void SetToolMode(string tool)
         {
             _currentTool = tool;
-                _view.UpdateStatus($"Tool: {tool}");
+            _view.UpdateStatus($"Tool: {tool}");
         }
 
         public void DeleteSelectedSprite()
@@ -356,8 +345,8 @@ namespace SpriteExtractor.Presenters
             }
 
             // حذف آیتم از ListView
-                if (_view?.SpriteListView != null)
-                {
+            if (_view?.SpriteListView != null)
+            {
                 _view.BeginUpdateSpriteList();
                 try
                 {
@@ -381,10 +370,8 @@ namespace SpriteExtractor.Presenters
                         {
                             int removedIndex = _view.SpriteListView.Items.IndexOf(toRemove);
                             _view.SpriteListView.Items.Remove(toRemove);
-                            // Rebuild the list to reset thumbnail cache after removal
-                            _view.UpdateSpriteList(_project.Sprites);
 
-                            // انتخاب آیتم مجاور
+                            // فقط انتخاب آیتم مجاور را انجام بده، بدون ریلود کل لیست
                             if (_view.SpriteListView.Items.Count > 0)
                             {
                                 int selectIndex = Math.Min(removedIndex, _view.SpriteListView.Items.Count - 1);
@@ -406,24 +393,14 @@ namespace SpriteExtractor.Presenters
                             _suppressListSelectionChanged = false;
                         }
                     }
-                    else
-                    {
-                        if (_selectedSprite == sprite)
-                            UpdateSelectedSprite(null);
-                    }
                 }
                 finally
                 {
                     _view.EndUpdateSpriteList();
                 }
             }
-            else
-            {
-                if (_selectedSprite == sprite)
-                    UpdateSelectedSprite(null);
-            }
 
-            // رفرش UI
+            // رفرش صریح UI و پنل تصویر
             _view?.SpriteListView?.Refresh();
             _view?.InvalidateImagePanel();
         }
@@ -445,10 +422,10 @@ namespace SpriteExtractor.Presenters
                 _project.Sprites.Insert(index, sprite);
             }
 
-                    var spriteKey = GetSpriteKey(sprite);
+            var spriteKey = GetSpriteKey(sprite);
 
-                    // Delegate thumbnail creation/registration to SpritePresenter (async)
-                    _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, sprite, spriteKey);
+            // Delegate thumbnail creation/registration to SpritePresenter (async)
+            _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, sprite, spriteKey);
 
             // درج در ListView
             if (_view?.SpriteListView != null)
@@ -602,8 +579,8 @@ namespace SpriteExtractor.Presenters
 
         private void OnImagePanelMouseDown(object sender, MouseEventArgs e)
         {
-            // 🔧 اگر ابزار rectangle است اما تصویری بارگذاری نشده، برگرد
-            if (_currentTool == "rectangle" && string.IsNullOrEmpty(_project.SourceImagePath))
+            // If no image is loaded, don't proceed
+            if (string.IsNullOrEmpty(_project.SourceImagePath))
             {
                 MessageBox.Show("Please load an image first.", "Info",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -611,48 +588,43 @@ namespace SpriteExtractor.Presenters
             }
             _lastMousePosition = e.Location;
 
-            if (_currentTool == "rectangle")
+            // Check if clicked on an existing sprite first
+            var clickedSprite = HitTestSprites(e.Location);
+
+            if (clickedSprite != null)
             {
+                // If clicked on an existing sprite, switch to select mode and allow moving
+                _currentTool = "select"; // Automatically switch to select mode
+                UpdateSelectedSprite(clickedSprite);
+                
+                // Check if clicked on resize handles
+                _activeResizeHandle = HitTestResizeHandles(clickedSprite.Bounds, e.Location);
+
+                if (_activeResizeHandle != ResizeHandle.None)
+                {
+                    _currentSelectionMode = SelectionMode.Resizing;
+                }
+                else
+                {
+                    // Otherwise, start moving the sprite
+                    _currentSelectionMode = SelectionMode.Moving;
+                }
+            }
+            else
+            {
+                // If clicked on empty space, start drawing a new rectangle regardless of current tool
                 // حالت رسم مستطیل جدید
                 _dragStart = e.Location;
                 _currentRect = new Rectangle(e.X, e.Y, 0, 0);
                 _isDragging = true;
                 _currentSelectionMode = SelectionMode.Drawing;
                 _selectedSprite = null;
+                
+                // Deselect any currently selected sprite
+                UpdateSelectedSprite(null);
             }
-            else if (_currentTool == "select")
-            {
-                // ابتدا بررسی کن آیا روی دسته‌های Resize کلیک شده
-                if (_selectedSprite != null)
-                {
-                    _activeResizeHandle = HitTestResizeHandles(_selectedSprite.Bounds, e.Location);
 
-                    if (_activeResizeHandle != ResizeHandle.None)
-                    {
-                        _currentSelectionMode = SelectionMode.Resizing;
-                        _view.InvalidateImagePanel();
-                        return;
-                    }
-                }
-
-                // اگر روی دسته نبود، بررسی کن آیا روی خود اسپرایت کلیک شده
-                var clickedSprite = HitTestSprites(e.Location);
-
-                if (clickedSprite != null)
-                {
-                    // ✅ این خط تغییر کرد:
-                    UpdateSelectedSprite(clickedSprite);
-                    _currentSelectionMode = SelectionMode.Moving;
-                }
-                else
-                {
-                    // ✅ این خط تغییر کرد:
-                    UpdateSelectedSprite(null);
-                    _currentSelectionMode = SelectionMode.None;
-                }
-
-                _view.InvalidateImagePanel();
-            }
+            _view.InvalidateImagePanel();
         }
 
         // متد کمکی برای آپدیت انتخاب در ListView
@@ -660,7 +632,7 @@ namespace SpriteExtractor.Presenters
         private void OnImagePanelMouseMove(object sender, MouseEventArgs e)
         {
             // 1. حالت رسم مستطیل
-            if (_isDragging && _currentTool == "rectangle")
+            if (_isDragging && _currentSelectionMode == SelectionMode.Drawing)
             {
                 _currentRect = new Rectangle(
                     Math.Min(_dragStart.X, e.X),
@@ -685,14 +657,25 @@ namespace SpriteExtractor.Presenters
                 int deltaX = e.X - _lastMousePosition.X;
                 int deltaY = e.Y - _lastMousePosition.Y;
 
-                var bounds = _selectedSprite.Bounds;
-                bounds.X += deltaX;
-                bounds.Y += deltaY;
-                _selectedSprite.Bounds = bounds;
+                // Only update if there's actual movement
+                if (deltaX != 0 || deltaY != 0)
+                {
+                    var bounds = _selectedSprite.Bounds;
+                    bounds.X += deltaX;
+                    bounds.Y += deltaY;
+                    _selectedSprite.Bounds = bounds;
 
-                _view.InvalidateImagePanel();
-                RefreshPropertyGrid();
-                _lastMousePosition = e.Location;
+                    _view.InvalidateImagePanel();
+                    RefreshPropertyGrid();
+                    _lastMousePosition = e.Location;
+                    
+                    // Update thumbnail in real-time as the sprite is being moved
+                    var key = GetSpriteKey(_selectedSprite);
+                    _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, _selectedSprite, key);
+                    
+                    // Update list view item in real-time
+                    UpdateListViewForSprite(_selectedSprite);
+                }
             }
 
             // 4. حالت Resize (تغییر اندازه)
@@ -742,13 +725,20 @@ namespace SpriteExtractor.Presenters
                 }
 
                 // جلوگیری از اندازه منفی (حداقل 5x5)
-                if (bounds.Width < 5) bounds.Width = 5;
-                if (bounds.Height < 5) bounds.Height = 5;
-
-                _selectedSprite.Bounds = bounds;
-                _view.InvalidateImagePanel();
-                RefreshPropertyGrid();
-                _lastMousePosition = e.Location;
+                if (bounds.Width >= 5 && bounds.Height >= 5)
+                {
+                    _selectedSprite.Bounds = bounds;
+                    _view.InvalidateImagePanel();
+                    RefreshPropertyGrid();
+                    _lastMousePosition = e.Location;
+                    
+                    // Update thumbnail in real-time as the sprite is being resized
+                    var key = GetSpriteKey(_selectedSprite);
+                    _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, _selectedSprite, key);
+                    
+                    // Update list view item in real-time
+                    UpdateListViewForSprite(_selectedSprite);
+                }
             }
         }
 
@@ -756,7 +746,7 @@ namespace SpriteExtractor.Presenters
         private void OnImagePanelMouseUp(object sender, MouseEventArgs e)
         {
             // پایان رسم مستطیل
-            if (_isDragging && _currentTool == "rectangle")
+            if (_isDragging && _currentSelectionMode == SelectionMode.Drawing)
             {
                 _isDragging = false;
 
@@ -771,10 +761,25 @@ namespace SpriteExtractor.Presenters
 
                     _spriteCounter++; // افزایش counter برای اسپرایت بعدی
 
-                    // Use the SpritePresenter helper so insertion logic is centralized
-                    Presenters.SpritePresenter.InsertNewSprite(this, sprite);
-                    // Kick off thumbnail creation asynchronously (fire-and-forget)
-                    _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, sprite, GetSpriteKey(sprite));
+                    // Create an undoable command for adding the sprite
+                    var cmd = new Services.DelegateCommand(
+                        execute: () => {
+                            // Use the SpritePresenter helper so insertion logic is centralized
+                            Presenters.SpritePresenter.InsertNewSprite(this, sprite);
+                        },
+                        undo: () => {
+                            // Remove the sprite to undo the operation
+                            Presenters.SpritePresenter.RemoveSprite(this, sprite);
+                        },
+                        description: $"Add '{sprite.Name}' sprite"
+                    );
+
+                    // Execute the command through the command manager to make it undoable
+                    _commandManager.ExecuteCommand(cmd);
+                    
+                    // Switch to select mode and select the newly created sprite
+                    _currentTool = "select";
+                    UpdateSelectedSprite(sprite);
                 }
 
                 _currentRect = Rectangle.Empty;
@@ -788,11 +793,14 @@ namespace SpriteExtractor.Presenters
                 _activeResizeHandle = ResizeHandle.None;
                 _view.ImagePanel.Cursor = Cursors.Default;
                 if (_selectedSprite != null)
-                    // Update thumbnail for selected sprite via SpritePresenter (async)
-                    {
-                        var key = GetSpriteKey(_selectedSprite);
-                        _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, _selectedSprite, key);
-                    }
+                // Update thumbnail for selected sprite via SpritePresenter (async)
+                {
+                    var key = GetSpriteKey(_selectedSprite);
+                    _ = Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(this, _selectedSprite, key);
+                    
+                    // Also update the list view item with new position/size
+                    UpdateListViewForSprite(_selectedSprite);
+                }
                 _view.UpdateStatus($"Sprite updated. Position: ({_selectedSprite.Bounds.X}, {_selectedSprite.Bounds.Y}), Size: {_selectedSprite.Bounds.Width}x{_selectedSprite.Bounds.Height}");
             }
         }
@@ -882,9 +890,9 @@ namespace SpriteExtractor.Presenters
             }
 
             // رسم مستطیل موقت
-            if (_isDragging && _currentTool == "rectangle")
+            if (_isDragging && _currentSelectionMode == SelectionMode.Drawing)
             {
-                using var pen = new Pen(Color.Red, 2);
+                using var pen = new Pen(Color.Red, 2) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
                 g.DrawRectangle(pen, _currentRect);
             }
             // رسم دسته‌های Resize برای اسپرایت انتخاب‌شده
@@ -986,6 +994,10 @@ namespace SpriteExtractor.Presenters
 
                     item.SubItems[1].Text = $"{sprite.Bounds.X}, {sprite.Bounds.Y}";
                     item.SubItems[2].Text = $"{sprite.Bounds.Width}×{sprite.Bounds.Height}";
+                    
+                    // Update the image key to ensure thumbnail is properly linked
+                    var spriteKey = GetSpriteKey(sprite);
+                    item.ImageKey = spriteKey;
                     break;
                 }
             }
@@ -1159,7 +1171,7 @@ namespace SpriteExtractor.Presenters
 
             return pattern;
         }
-        private string GetSpriteKey(SpriteDefinition s)
+        public string GetSpriteKey(SpriteDefinition s)
         {
             if (s == null) return null;
 
@@ -1175,7 +1187,7 @@ namespace SpriteExtractor.Presenters
             return newId;
         }
 
-                // Legacy thumbnail helpers removed. Use Presenters.SpritePresenter for thumbnail operations.
+        // Legacy thumbnail helpers removed. Use Presenters.SpritePresenter for thumbnail operations.
 
         private void OnCommandOperationPerformed(CommandManager.OperationType op)
         {
@@ -1197,6 +1209,6 @@ namespace SpriteExtractor.Presenters
             }
         }
 
-            private TextureBrush _checkerboardBrush = null;
-        }
+        private TextureBrush _checkerboardBrush = null;
     }
+}
