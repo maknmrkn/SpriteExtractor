@@ -53,7 +53,10 @@ namespace SpriteExtractor.Presenters
         private Rectangle _lastKnownBounds = Rectangle.Empty;
         private bool _isPropertyGridMonitoring = false;
         private Bitmap _loadedBitmap;
-        private int _spriteCounter = 1; // برای نام‌گذاری منحصربه‌فرد
+        private int _spriteCounter = 1; /// <summary>
+        /// Creates a MainPresenter that manages application state and coordinates the provided main view.
+        /// </summary>
+        /// <param name="view">The main view implementation used for UI interactions (implements IMainView).</param>
         public MainPresenter(Views.IMainView view)
         {
             _view = view;
@@ -67,6 +70,12 @@ namespace SpriteExtractor.Presenters
             SetupDoubleClickHandler();
 
         }
+        /// <summary>
+        /// Initialize and configure the timer used to poll for property-grid changes.
+        /// </summary>
+        /// <remarks>
+        /// The timer is created, set to a 50 millisecond interval, and wired to the <see cref="OnPropertyGridTimerTick"/> handler.
+        /// </remarks>
         private void SetupPropertyGridTimer()
         {
             _propertyChangeTimer = new System.Windows.Forms.Timer();
@@ -74,6 +83,9 @@ namespace SpriteExtractor.Presenters
             _propertyChangeTimer.Tick += OnPropertyGridTimerTick;
         }
 
+        /// <summary>
+        /// Monitors the selected sprite's bounds while property-grid monitoring is active and refreshes the image panel and list view when the bounds change.
+        /// </summary>
         private void OnPropertyGridTimerTick(object sender, EventArgs e)
         {
             if (_selectedSprite == null || !_isPropertyGridMonitoring) return;
@@ -87,6 +99,12 @@ namespace SpriteExtractor.Presenters
             }
         }
 
+        /// <summary>
+        /// Subscribes the presenter's handlers to the view's UI events so the presenter receives mouse, paint, and property-grid change notifications.
+        /// </summary>
+        /// <remarks>
+        /// Hooks ImagePanel mouse and paint events and subscribes to PropertyGrid selection/value change notifications required for keeping the model and UI in sync.
+        /// </remarks>
         private void SetupEventHandlers()
         {
             // Event wiring still requires access to the panel control
@@ -101,7 +119,13 @@ namespace SpriteExtractor.Presenters
 
         }
 
-        // بعد از متد SetupEventHandlers، این متد را اضافه کنید:
+        /// <summary>
+        /// Attaches a handler to the sprite list's double-click event that focuses the double-clicked sprite.
+        /// </summary>
+        /// <remarks>
+        /// When a sprite list item is double-clicked, the view scrolls to the sprite's bounds, sets that sprite as focused,
+        /// invalidates the image panel to refresh the display, and updates the status message with the sprite's name.
+        /// </remarks>
         private void SetupDoubleClickHandler()
         {
             // دابل‌کلیک روی لیست اسپرایت‌ها
@@ -125,6 +149,11 @@ namespace SpriteExtractor.Presenters
             };
         }
 
+        /// <summary>
+        /// Refreshes the image panel and synchronizes the sprite list row when the PropertyGrid's selected item changes for the currently selected sprite.
+        /// </summary>
+        /// <param name="sender">The PropertyGrid that raised the event.</param>
+        /// <param name="e">Event data describing the newly selected grid item.</param>
         private void OnPropertyGridItemChanged(object sender, SelectedGridItemChangedEventArgs e)
         {
             if (_selectedSprite == null) return;
@@ -135,6 +164,11 @@ namespace SpriteExtractor.Presenters
             UpdateListViewForSprite(_selectedSprite);
         }
 
+        /// <summary>
+        /// Responds to changes made in the property grid for the currently selected sprite and updates the view and list state accordingly.
+        /// </summary>
+        /// <param name="s">The sender of the property value changed event (property grid).</param>
+        /// <param name="e">Event arguments containing the changed property item and its new value.</param>
         private void OnPropertyGridValueChanged(object s, PropertyValueChangedEventArgs e)
         {
             if (_selectedSprite == null) return;
@@ -157,7 +191,13 @@ namespace SpriteExtractor.Presenters
                 _view.UpdateStatus($"Size changed to {_selectedSprite.Bounds.Width}x{_selectedSprite.Bounds.Height}");
             }
         }
-        // این متد را به MainPresenter اضافه کنید
+        /// <summary>
+        /// Make the specified sprite the active selection and synchronize UI state to match.
+        /// </summary>
+        /// <param name="sprite">The sprite to select, or null to clear the current selection.</param>
+        /// <remarks>
+        /// Side effects: stops and (for a non-null sprite) starts the property-change monitoring timer, clears and updates the list view selection to the specified sprite (suppressing selection-changed events during the update), and sets the PropertyGrid's SelectedObject to the sprite.
+        /// </remarks>
         private void UpdateSelectedSprite(SpriteDefinition sprite)
         {
             // ۱. تایمر قبلی را متوقف کن
@@ -209,7 +249,19 @@ namespace SpriteExtractor.Presenters
             _view.PropertyGrid.SelectedObject = _selectedSprite;
         }
 
-        // عملیات فایل - نسخه اصلاح شده بدون فریز
+        /// <summary>
+        /// Prompts the user to select an image file, loads it as the project's sprite sheet, and reinitializes project state.
+        /// </summary>
+        /// <remarks>
+        /// On successful selection and load this method:
+        /// - sets the project's SourceImagePath,
+        /// - clears the project's sprite list,
+        /// - resets the internal sprite counter to 1,
+        /// - replaces the presenter's loaded bitmap,
+        /// - updates the UI status and invalidates the image panel,
+        /// - and requests an asynchronous rebuild of all thumbnails via SpritePresenter.
+        /// If an error occurs while loading the image, a message box is shown describing the error.
+        /// </remarks>
         public void OpenImage()
         {
             using var dialog = new OpenFileDialog
@@ -263,11 +315,17 @@ namespace SpriteExtractor.Presenters
             return bitmap;
         }
 
+        /// <summary>
+        /// Persists the current sprite project to storage and updates the view accordingly.
+        /// </summary>
         public void SaveProject()
         {
             Presenters.ProjectPresenter.SaveProject(_project, _view);
         }
 
+        /// <summary>
+        /// Loads a SpriteProject via the ProjectPresenter and, if successful, replaces the presenter's current project with the loaded project.
+        /// </summary>
         public void LoadProject()
         {
             var proj = Presenters.ProjectPresenter.LoadProject(_view);
@@ -284,11 +342,19 @@ namespace SpriteExtractor.Presenters
             _view.UpdateStatus($"Tool: {tool}");
         }
 
+        /// <summary>
+        /// Deletes the currently selected sprite from the project, updates UI state, and records the action for undo.
+        /// </summary>
         public void DeleteSelectedSprite()
         {
             Presenters.SpritePresenter.DeleteSelectedSprite(this);
         }
-        // اضافه کن در MainPresenter.cs، بعد از DeleteSelectedSprite()
+        /// <summary>
+/// Reverses the last executed command in the command manager.
+/// </summary>
+/// <remarks>
+/// Does nothing if there is no operation available to undo.
+/// </remarks>
         public void Undo() => _commandManager.Undo();
         public void Redo() => _commandManager.Redo();
         public bool CanUndo() => _commandManager.CanUndo;
@@ -299,7 +365,10 @@ namespace SpriteExtractor.Presenters
 
         // حذف واقعی بدون مدیریت undo stack (private helper)
         // حذف واقعی بدون مدیریت undo stack (private helper)
-        // ================== متد RemoveSpriteInternal اصلاح شده ==================
+        /// <summary>
+        /// Remove a sprite from the project and UI, cleaning up its thumbnails and cache and updating selection and the image panel.
+        /// </summary>
+        /// <param name="sprite">The sprite definition to remove; if null the method does nothing.</param>
         internal void RemoveSpriteInternal(SpriteDefinition sprite)
         {
             if (sprite == null) return;
@@ -409,7 +478,11 @@ namespace SpriteExtractor.Presenters
 
 
         // درج واقعی بدون مدیریت undo stack (private helper)
-        // درج واقعی بدون مدیریت undo stack (private helper)
+        /// <summary>
+        /// Inserts a sprite into the project and the sprite list UI, updates selection and list-row data, and triggers thumbnail creation.
+        /// </summary>
+        /// <param name="sprite">The sprite definition to insert; if null, the method is a no-op.</param>
+        /// <param name="index">Desired insertion index; values less than zero or greater than the current count are clamped to the end.</param>
         internal void InsertSpriteInternal(SpriteDefinition sprite, int index)
         {
             if (sprite == null) return;
@@ -482,7 +555,14 @@ namespace SpriteExtractor.Presenters
         }
 
         // متد کمکی برای تولید thumbnail از bitmap اصلی
-        // Thumbnail generation now delegated to Services.ThumbnailService and Presenters.SpritePresenter.
+        /// <summary>
+        /// Synchronizes UI state when the user selects a sprite in the list view.
+        /// </summary>
+        /// <remarks>
+        /// Sets the PropertyGrid to the selected sprite, scrolls the image panel to the sprite's bounds,
+        /// sets the presenter's focused sprite, and requests an image-panel redraw. If no item is selected,
+        /// clears the focused sprite.
+        /// </remarks>
 
 
 
@@ -577,6 +657,17 @@ namespace SpriteExtractor.Presenters
             _view.UpdateStatus("Fit to Screen - Feature coming soon");
         }
 
+        /// <summary>
+        /// Handle mouse-down events on the image panel to begin drawing, select, move, or resize sprites.
+        /// </summary>
+        /// <param name="sender">The control that raised the event (image panel).</param>
+        /// <param name="e">Mouse event data containing the click location and button information.</param>
+        /// <remarks>
+        /// If no image is loaded, shows an informational message and aborts. If the click hits an existing sprite, the presenter
+        /// switches to select mode and enters either moving or resizing depending on which resize handle (if any) was hit.
+        /// If the click is on empty space, begins a new rectangle draw operation and clears the current selection.
+        /// The method requests a panel redraw after updating state.
+        /// </remarks>
         private void OnImagePanelMouseDown(object sender, MouseEventArgs e)
         {
             // If no image is loaded, don't proceed
@@ -627,7 +718,11 @@ namespace SpriteExtractor.Presenters
             _view.InvalidateImagePanel();
         }
 
-        // متد کمکی برای آپدیت انتخاب در ListView
+        /// <summary>
+        /// Handle mouse-move events on the image panel to update drawing rectangles, move or resize the selected sprite, adjust the cursor over resize handles, and synchronize thumbnails, the property grid, and the list view in real time.
+        /// </summary>
+        /// <param name="sender">The event source (image panel).</param>
+        /// <param name="e">Mouse event data; the location and button state determine drawing, moving, or resizing actions.</param>
 
         private void OnImagePanelMouseMove(object sender, MouseEventArgs e)
         {
@@ -742,7 +837,10 @@ namespace SpriteExtractor.Presenters
             }
         }
 
-        // ================== متد OnImagePanelMouseUp اصلاح شده ==================
+        /// <summary>
+        /// Handle mouse button release on the image panel; completes a drawing operation (creating a new sprite and executing an undoable add command) or finalizes a move/resize (updating thumbnail, list view, and status).</summary>
+        /// <param name="sender">Event source (the image panel).</param>
+        /// <param name="e">Mouse event data containing the release location and button state.</param>
         private void OnImagePanelMouseUp(object sender, MouseEventArgs e)
         {
             // پایان رسم مستطیل
@@ -805,6 +903,10 @@ namespace SpriteExtractor.Presenters
             }
         }
 
+        /// <summary>
+        /// Set the project's highlight color and refresh the image panel to apply the change.
+        /// </summary>
+        /// <param name="color">The new highlight color to use for sprite highlighting.</param>
         public void SetHighlightColor(Color color)
         {
             _project.Settings.HighlightColor = color;
@@ -820,6 +922,11 @@ namespace SpriteExtractor.Presenters
             return _project.Settings.HighlightColor;
         }
 
+        /// <summary>
+        /// Renders the image panel contents: checkerboard background, loaded bitmap (preserving alpha), temporary drawing rectangle, resize handles for the selected sprite, and outlines/labels for visible sprites.
+        /// </summary>
+        /// <param name="sender">The control that raised the Paint event.</param>
+        /// <param name="e">The PaintEventArgs containing the Graphics surface and clipping region used to draw the image panel.</param>
         private void OnImagePanelPaint(object sender, PaintEventArgs e)
         {
 
@@ -980,6 +1087,10 @@ namespace SpriteExtractor.Presenters
             }
         }
 
+        /// <summary>
+        /// Updates the sprite's row in the view's list to reflect the sprite's bounds and associated image key.
+        /// </summary>
+        /// <param name="sprite">The sprite whose list entry should be updated; if null or the view's list is unavailable, no action is taken.</param>
         private void UpdateListViewForSprite(SpriteDefinition sprite)
         {
             if (sprite == null || _view?.SpriteListView == null) return;
@@ -1039,7 +1150,15 @@ namespace SpriteExtractor.Presenters
             return ResizeHandle.None;
         }
 
-        // متد برای گرفتن Cursor مناسب برای هر دسته
+        /// <summary>
+        /// Selects the mouse cursor appropriate for the given resize handle.
+        /// </summary>
+        /// <param name="handle">The resize handle whose corresponding cursor is required.</param>
+        /// <returns>
+        /// The cursor that represents the resize direction for the handle:
+        /// `SizeNWSE` for top-left/bottom-right, `SizeNESW` for top-right/bottom-left,
+        /// `SizeNS` for top/bottom, `SizeWE` for left/right, or the default cursor otherwise.
+        /// </returns>
         private Cursor GetCursorForHandle(ResizeHandle handle)
         {
             return handle switch
@@ -1054,7 +1173,10 @@ namespace SpriteExtractor.Presenters
         // این متد را به MainPresenter اضافه کنید
 
         // Thumbnail generation and management are delegated to Presenters.SpritePresenter
-        // and Services.ThumbnailService. Legacy per-presenter thumbnail helpers removed.
+        /// <summary>
+        /// Make the provided sprite the currently selected sprite (if selection is not suppressed and different from the current selection) and refresh the image panel.
+        /// </summary>
+        /// <param name="sprite">The sprite to select; may be null to clear the selection.</param>
 
         public void OnListViewItemSelected(SpriteDefinition sprite)
         {
@@ -1064,7 +1186,12 @@ namespace SpriteExtractor.Presenters
             _view?.InvalidateImagePanel();
         }
 
-        // اضافه کن داخل کلاس MainPresenter (بعد از OnListViewItemSelected یا قبل از OpenImage)
+        /// <summary>
+        /// Cancels any in-progress sprite editing operation and resets the presenter's interaction state.
+        /// </summary>
+        /// <remarks>
+        /// Resets the active tool to "select", clears the current sprite selection, cancels dragging and resize modes, stops property-grid monitoring, invalidates the image panel, and updates the status message to indicate cancellation.
+        /// </remarks>
         public void CancelCurrentOperation()
         {
             // بازگشت به حالت ابزار پیش‌فرض
@@ -1089,6 +1216,10 @@ namespace SpriteExtractor.Presenters
 
 
 
+        /// <summary>
+        /// Sets the UI focus to the given sprite and updates the image panel and status to reflect the change.
+        /// </summary>
+        /// <param name="sprite">The sprite to focus; if null or already focused, the method does nothing.</param>
         public void FocusOnSprite(SpriteDefinition sprite)
         {
             if (sprite != null && sprite != _selectedSprite)
@@ -1148,6 +1279,11 @@ namespace SpriteExtractor.Presenters
             }
         }
 
+        /// <summary>
+        /// Creates a small two-by-two checkerboard bitmap used for painting a tiled transparency background.
+        /// </summary>
+        /// <param name="cellSize">The size, in pixels, of each square cell in the pattern (default is 10).</param>
+        /// <returns>A Bitmap of size <c>cellSize*2</c> by <c>cellSize*2</c> containing alternating light and dark gray squares.</returns>
         private Bitmap CreateCheckerboardPattern(int cellSize = 10)
         {
             var pattern = new Bitmap(cellSize * 2, cellSize * 2);
@@ -1171,6 +1307,11 @@ namespace SpriteExtractor.Presenters
 
             return pattern;
         }
+        /// <summary>
+        /// Provides a stable identifier for a sprite, preferring the sprite's own Id when present.
+        /// </summary>
+        /// <param name="s">The sprite to obtain a key for; may be null.</param>
+        /// <returns>The sprite's Id if present; otherwise a stable generated key associated with the sprite. Returns null if <paramref name="s"/> is null.</returns>
         public string GetSpriteKey(SpriteDefinition s)
         {
             if (s == null) return null;
@@ -1187,7 +1328,12 @@ namespace SpriteExtractor.Presenters
             return newId;
         }
 
-        // Legacy thumbnail helpers removed. Use Presenters.SpritePresenter for thumbnail operations.
+        /// <summary>
+        /// Refreshes thumbnails, updates the sprite list, and invalidates the image panel when undo/redo/clear operations occur.
+        /// </summary>
+        /// <remarks>
+        /// When the operation is Undo, Redo, or Clear, requests a full thumbnail update via SpritePresenter, then updates the view's sprite list and invalidates the image panel to reflect the restored state.
+        /// </remarks>
 
         private void OnCommandOperationPerformed(CommandManager.OperationType op)
         {

@@ -7,6 +7,12 @@ namespace SpriteExtractor.Services
 {
     public static class ThumbnailService
     {
+        /// <summary>
+        /// Create a 48×48 thumbnail with a checkerboard background and an optional centered image overlay.
+        /// </summary>
+        /// <param name="sourceBitmap">The source bitmap to draw into the thumbnail; may be <c>null</c> to produce only the checkerboard background.</param>
+        /// <param name="bounds">The source rectangle within <paramref name="sourceBitmap"/> to sample and scale to fit the thumbnail.</param>
+        /// <returns>An Image sized 48×48 containing the generated thumbnail. If an error occurs, a plain 48×48 bitmap is returned.</returns>
         public static Task<Image> GenerateThumbnailAsync(Bitmap sourceBitmap, Rectangle bounds)
         {
             return Task.Run<Image>(() =>
