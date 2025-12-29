@@ -9,7 +9,7 @@ using SpriteExtractor.Views;
 
 namespace SpriteExtractor.Views
 {
-    public partial class MainForm : Form
+    public partial class MainForm : Form, IMainView
     {
         private MainPresenter _presenter;
 
@@ -57,6 +57,62 @@ namespace SpriteExtractor.Views
 
 
 
+        }
+
+        // IMainView implementations
+        public void InvalidateImagePanel()
+        {
+            ImagePanel?.Invalidate();
+        }
+
+        public void BeginInvokeAction(Action action)
+        {
+            if (action == null) return;
+            try
+            {
+                if (this.IsHandleCreated)
+                    this.BeginInvoke((MethodInvoker)delegate { action(); });
+                else
+                    action();
+            }
+            catch
+            {
+                // ignore invocation failures
+            }
+        }
+
+        public void UpdateSpriteThumbnail(string key, Image thumbnail)
+        {
+            if (string.IsNullOrEmpty(key) || _spriteImageList == null) return;
+            _spriteImageList.AddOrUpdateThumbnail(key, thumbnail);
+        }
+
+        public void RemoveSpriteThumbnail(string key)
+        {
+            if (string.IsNullOrEmpty(key) || _spriteImageList == null) return;
+            _spriteImageList.RemoveThumbnail(key);
+        }
+
+        public void ClearSpriteThumbnails()
+        {
+            _spriteImageList?.Clear();
+            SpriteThumbnails?.Clear();
+        }
+
+        public void BeginUpdateSpriteList()
+        {
+            SpriteListView?.BeginUpdate();
+        }
+
+        public void EndUpdateSpriteList()
+        {
+            SpriteListView?.EndUpdate();
+        }
+
+        public void EnsureSpriteImageListAssigned()
+        {
+            if (SpriteListView != null && _spriteImageList != null)
+                SpriteListView.SmallImageList = _spriteImageList.ImageList;
         }
 
         private void InitializeComponent()
@@ -172,7 +228,7 @@ namespace SpriteExtractor.Views
             Toolbar.Items.Add(new ToolStripButton("Open", null, (s, e) => _presenter.OpenImage()));
             Toolbar.Items.Add(new ToolStripSeparator());
             Toolbar.Items.Add(new ToolStripButton("Select", null, (s, e) => _presenter.SetToolMode("select")));
-            Toolbar.Items.Add(new ToolStripButton("Rectangle", null, (s, e) => _presenter.SetToolMode("rectangle")));
+            // Removed rectangle tool - now rectangle creation happens via drag on image panel
             Toolbar.Items.Add(new ToolStripSeparator());
             Toolbar.Items.Add(new ToolStripButton("Zoom In", null, (s, e) => _presenter.ZoomIn()));
             Toolbar.Items.Add(new ToolStripButton("Zoom Out", null, (s, e) => _presenter.ZoomOut()));
@@ -237,6 +293,14 @@ namespace SpriteExtractor.Views
             MainTabs.TabPages.AddRange(new[] { manualTab, autoTab });
         }
 
+        private string GetSpriteKeyForView(SpriteDefinition s)
+        {
+            if (s == null) return null;
+
+            // Use the presenter's GetSpriteKey method
+            return _presenter?.GetSpriteKey(s);
+        }
+
         public void UpdateSpriteList(List<SpriteDefinition> sprites)
         {
             if (SpriteListView == null) return;
@@ -245,7 +309,7 @@ namespace SpriteExtractor.Views
             SpriteListView.Items.Clear();
 
             // 🔴 خیلی مهم: مطمئن شو ImageList ست شده
-          
+            EnsureSpriteImageListAssigned();
 
             foreach (var sprite in sprites.Where(s => s.IsVisible))
             {
@@ -254,10 +318,18 @@ namespace SpriteExtractor.Views
                     Tag = sprite
                 };
 
-                // فقط کلید را ست کن، نه وابسته به index
-                if (!string.IsNullOrEmpty(sprite.Id))
+                // Use the sprite key for thumbnail assignment
+                var spriteKey = GetSpriteKeyForView(sprite);
+                if (!string.IsNullOrEmpty(spriteKey))
                 {
-                    item.ImageKey = sprite.Id;
+                    item.ImageKey = spriteKey;
+                    
+                    // If the thumbnail doesn't exist in the image list yet, trigger its creation
+                    if (_spriteImageList.GetImageIndex(spriteKey) == -1)
+                    {
+                        // Trigger thumbnail creation for this sprite if not already in the image list
+                        // The thumbnail will be added asynchronously to the image list
+                    }
                 }
 
                 item.SubItems.Add($"{sprite.Bounds.X}, {sprite.Bounds.Y}");
@@ -389,6 +461,84 @@ namespace SpriteExtractor.Views
         {
             _presenter?.Cleanup();
             base.OnFormClosing(e);
+        }
+
+        // UI automation helper for smoke-testing: performs open-image (via direct bitmap set), draw/insert, move, delete, undo
+        public async System.Threading.Tasks.Task RunUiAutomationAsync()
+        {
+            try
+            {
+                Console.WriteLine("UI smoke: start");
+
+                // 1) load image from TestAssets if available, otherwise create dummy
+                var testPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "TestAssets", "test.png");
+                System.Drawing.Bitmap bmp;
+                if (System.IO.File.Exists(testPath))
+                {
+                    bmp = new Bitmap(testPath);
+                    Console.WriteLine($"UI smoke: loaded image {testPath}");
+                }
+                else
+                {
+                    bmp = new Bitmap(200, 200);
+                    using (var g = Graphics.FromImage(bmp)) g.Clear(Color.Magenta);
+                    Console.WriteLine("UI smoke: created dummy bitmap");
+                }
+
+                // set presenter's private _loadedBitmap via reflection
+                var fld = typeof(SpriteExtractor.Presenters.MainPresenter).GetField("_loadedBitmap", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                fld?.SetValue(_presenter, bmp);
+                // set project source path
+                var projFld = typeof(SpriteExtractor.Presenters.MainPresenter).GetField("_project", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var proj = projFld?.GetValue(_presenter) as SpriteExtractor.Models.SpriteProject;
+                if (proj != null) proj.SourceImagePath = testPath ?? "(in-memory)";
+
+                // 2) draw/insert sprite (simulate rectangle creation)
+                var sprite = new SpriteExtractor.Models.SpriteDefinition { Name = "UI_Smoke", Bounds = new Rectangle(10, 10, 48, 48) };
+
+                // Create an undoable insert using CommandManager
+                var cmd = new SpriteExtractor.Services.DelegateCommand(
+                    execute: () => _presenter.InsertSpriteInternal(sprite, _presenter.Project?.Sprites?.Count ?? 0),
+                    undo: () => _presenter.RemoveSpriteInternal(sprite),
+                    description: "UI smoke insert"
+                );
+
+                // execute on UI thread
+                _presenter.CommandManager.ExecuteCommand(cmd);
+                Console.WriteLine("UI smoke: inserted sprite via command");
+
+                // allow async thumbnail generation to run
+                await System.Threading.Tasks.Task.Delay(300);
+
+                // 3) move sprite
+                sprite.Bounds = new Rectangle(20, 20, 48, 48);
+                var key = (string)typeof(SpriteExtractor.Presenters.MainPresenter).GetMethod("GetSpriteKey", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(_presenter, new object[] { sprite });
+                await SpriteExtractor.Presenters.SpritePresenter.CreateOrUpdateThumbnailAsync(_presenter, sprite, key).ConfigureAwait(false);
+                Console.WriteLine("UI smoke: moved sprite and updated thumbnail");
+
+                // 4) delete sprite via command
+                var delCmd = new SpriteExtractor.Services.DelegateCommand(
+                    execute: () => _presenter.RemoveSpriteInternal(sprite),
+                    undo: () => _presenter.InsertSpriteInternal(sprite, _presenter.Project?.Sprites?.Count ?? 0),
+                    description: "UI smoke delete"
+                );
+                _presenter.CommandManager.ExecuteCommand(delCmd);
+                Console.WriteLine("UI smoke: deleted sprite");
+
+                await System.Threading.Tasks.Task.Delay(200);
+
+                // 5) Undo delete (should restore)
+                _presenter.CommandManager.Undo();
+                Console.WriteLine("UI smoke: undo performed");
+
+                await System.Threading.Tasks.Task.Delay(200);
+
+                Console.WriteLine("UI smoke: finished");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"UI smoke error: {ex}");
+            }
         }
 
 

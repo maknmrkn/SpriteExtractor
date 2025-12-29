@@ -1,0 +1,7 @@
+UI smoke: start
+UI smoke: created dummy bitmap
+UI smoke: inserted sprite via command
+UI smoke: moved sprite and updated thumbnail
+UI smoke: deleted sprite
+UI smoke: undo performed
+UI smoke: finished
