@@ -26,6 +26,13 @@ namespace SpriteExtractor.Views
         public SpriteImageList SpriteImageList => _spriteImageList;
 
 
+        /// <summary>
+        /// Initializes the main form: sets up UI components, creates the presenter, and configures shared sprite thumbnail storage.
+        /// </summary>
+        /// <remarks>
+        /// This constructor calls InitializeComponent, instantiates MainPresenter, creates a single shared SpriteImageList used by the sprite list view,
+        /// ensures the sprite list view columns and view mode are configured, and wires selection, double-click, and key event handlers.
+        /// </remarks>
         public MainForm()
         {
             InitializeComponent();
@@ -59,12 +66,22 @@ namespace SpriteExtractor.Views
 
         }
 
-        // IMainView implementations
+        /// <summary>
+        /// Requests the image display panel to repaint its contents.
+        /// </summary>
+        /// <remarks>
+        /// If the image panel is not available, this method does nothing.
+        /// </remarks>
         public void InvalidateImagePanel()
         {
             ImagePanel?.Invalidate();
         }
 
+        /// <summary>
+        /// Executes the given action on the form's UI thread when a handle exists; otherwise invokes the action directly. Does nothing if <paramref name="action"/> is null.
+        /// </summary>
+        /// <param name="action">The delegate to execute on the UI thread or immediately if no handle is available.</param>
+        /// <remarks>Any exceptions thrown while attempting to invoke the action are caught and ignored.</remarks>
         public void BeginInvokeAction(Action action)
         {
             if (action == null) return;
@@ -81,40 +98,73 @@ namespace SpriteExtractor.Views
             }
         }
 
+        /// <summary>
+        /// Adds or replaces the thumbnail image associated with the given sprite key in the shared sprite image list.
+        /// </summary>
+        /// <param name="key">Unique key identifying the sprite thumbnail.</param>
+        /// <param name="thumbnail">Image to use as the sprite's thumbnail.</param>
         public void UpdateSpriteThumbnail(string key, Image thumbnail)
         {
             if (string.IsNullOrEmpty(key) || _spriteImageList == null) return;
             _spriteImageList.AddOrUpdateThumbnail(key, thumbnail);
         }
 
+        /// <summary>
+        /// Removes the sprite thumbnail identified by the given key from the internal image list.
+        /// </summary>
+        /// <param name="key">The image list key for the thumbnail to remove. If null or empty, the call does nothing.</param>
         public void RemoveSpriteThumbnail(string key)
         {
             if (string.IsNullOrEmpty(key) || _spriteImageList == null) return;
             _spriteImageList.RemoveThumbnail(key);
         }
 
+        /// <summary>
+        /// Removes all sprite thumbnail images from the view's internal image list and from the exposed SpriteThumbnails list.
+        /// </summary>
         public void ClearSpriteThumbnails()
         {
             _spriteImageList?.Clear();
             SpriteThumbnails?.Clear();
         }
 
+        /// <summary>
+        /// Suspends painting and layout updates for the sprite list to allow batch modifications.
+        /// </summary>
+        /// <remarks>
+        /// No operation if <see cref="SpriteListView"/> is null. Call <c>EndUpdateSpriteList()</c> after completing updates.
+        /// </remarks>
         public void BeginUpdateSpriteList()
         {
             SpriteListView?.BeginUpdate();
         }
 
+        /// <summary>
+        /// Ends a suspended update on the sprite list view and applies any pending changes to the UI.
+        /// </summary>
+        /// <remarks>
+        /// No operation if <c>SpriteListView</c> is null or not initialized.
+        /// </remarks>
         public void EndUpdateSpriteList()
         {
             SpriteListView?.EndUpdate();
         }
 
+        /// <summary>
+        /// Assigns the internal sprite thumbnail ImageList to the SpriteListView's SmallImageList when both are initialized.
+        /// </summary>
         public void EnsureSpriteImageListAssigned()
         {
             if (SpriteListView != null && _spriteImageList != null)
                 SpriteListView.SmallImageList = _spriteImageList.ImageList;
         }
 
+        /// <summary>
+        /// Initializes and configures the main form's user-interface components.
+        /// </summary>
+        /// <remarks>
+        /// Sets the form title and window state, creates and attaches the main MenuStrip, ToolStrip, TabControl (docked to fill), and StatusStrip with an initial "Ready" status item.
+        /// </remarks>
         private void InitializeComponent()
         {
 
@@ -223,6 +273,9 @@ namespace SpriteExtractor.Views
             UpdateHighlightColorMenu(highlightColorMenu, "Orange");
         }
 
+        /// <summary>
+        /// Adds toolbar buttons and separators to the form's toolbar and wires each button to the presenter's commands (Open, Select, Zoom In, Zoom Out, Fit to Screen).
+        /// </summary>
         private void CreateToolbarItems()
         {
             Toolbar.Items.Add(new ToolStripButton("Open", null, (s, e) => _presenter.OpenImage()));
@@ -235,6 +288,15 @@ namespace SpriteExtractor.Views
             Toolbar.Items.Add(new ToolStripButton("Fit to Screen", null, (s, e) => _presenter.ZoomFit()));
         }
 
+        /// <summary>
+        /// Initializes and adds the form's tab pages and their child controls for manual editing and auto-detection.
+        /// </summary>
+        /// <remarks>
+        /// Creates a "Manual Editing" tab containing a two-pane layout: a left image display panel (assigned to ImagePanel)
+        /// and a right vertical split with a SpriteListView (assigned to SpriteListView) and a PropertyGrid (assigned to PropertyGrid).
+        /// The SpriteListView is configured for details view with columns for Name, Position, and Size, and its selection change
+        /// is routed to the presenter. Also adds an "Auto Detection" tab as a placeholder.
+        /// </remarks>
         private void CreateTabs()
         {
             // تب ویرایش دستی
@@ -293,6 +355,11 @@ namespace SpriteExtractor.Views
             MainTabs.TabPages.AddRange(new[] { manualTab, autoTab });
         }
 
+        /// <summary>
+        /// Obtain the image-list key associated with a sprite for use in the view.
+        /// </summary>
+        /// <param name="s">The sprite definition to map to an image-list key.</param>
+        /// <returns>The image-list key for the given sprite, or null if the sprite is null or no key is available.</returns>
         private string GetSpriteKeyForView(SpriteDefinition s)
         {
             if (s == null) return null;
@@ -301,6 +368,10 @@ namespace SpriteExtractor.Views
             return _presenter?.GetSpriteKey(s);
         }
 
+        /// <summary>
+        /// Populate the form's sprite list view from the provided sprite definitions, ensuring the shared image list is assigned and requesting thumbnails for sprites that lack them.
+        /// </summary>
+        /// <param name="sprites">The collection of sprite definitions to display; only sprites whose <c>IsVisible</c> is true are added to the list.</param>
         public void UpdateSpriteList(List<SpriteDefinition> sprites)
         {
             if (SpriteListView == null) return;
@@ -456,14 +527,22 @@ namespace SpriteExtractor.Views
                 // (نیاز به محاسبات Viewport دارد)
             }
         }
-        // در MainForm، رویداد FormClosing را هندل کنید
+        /// <summary>
+        /// Ensures presenter cleanup is performed when the form is closing.
+        /// </summary>
+        /// <param name="e">Provides data for the form-closing event.</param>
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             _presenter?.Cleanup();
             base.OnFormClosing(e);
         }
 
-        // UI automation helper for smoke-testing: performs open-image (via direct bitmap set), draw/insert, move, delete, undo
+        /// <summary>
+        /// Runs a UI smoke-test that loads or creates a test image, inserts a sprite, moves it, deletes it, and then undoes the delete to verify basic UI workflows.
+        /// </summary>
+        /// <remarks>
+        /// The method uses reflection to set the presenter's loaded bitmap and to obtain sprite keys, executes insert/delete operations via the presenter's CommandManager, updates thumbnails, and writes progress and errors to the console. Exceptions are caught and logged; the method does not throw. Intended for automated UI verification only.
+        /// </remarks>
         public async System.Threading.Tasks.Task RunUiAutomationAsync()
         {
             try

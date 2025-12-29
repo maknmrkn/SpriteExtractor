@@ -13,7 +13,13 @@ namespace SpriteExtractor.Presenters
     public static class SpritePresenter
     {
         // Higher-level sprite operations. Uses MainPresenter internal APIs
-        // exposed for incremental refactor.
+        /// <summary>
+        /// Deletes the currently selected sprite after user confirmation and records the deletion as an undoable command.
+        /// </summary>
+        /// <remarks>
+        /// If no sprite is selected or the user cancels the confirmation dialog, the method does nothing.
+        /// </remarks>
+        /// <param name="main">The main presenter providing access to the view, project, and command manager; if null the method does nothing.</param>
 
         public static void DeleteSelectedSprite(MainPresenter main)
         {
@@ -50,12 +56,22 @@ namespace SpriteExtractor.Presenters
             view?.UpdateStatus($"Sprite '{sprite.Name}' deleted");
         }
 
+        /// <summary>
+        /// Insert a sprite into the project's sprite collection at the specified index.
+        /// </summary>
+        /// <param name="sprite">The sprite definition to insert.</param>
+        /// <param name="index">Zero-based position at which to insert the sprite in the project's sprite list.</param>
         public static void InsertSprite(MainPresenter main, SpriteDefinition sprite, int index)
         {
             if (main == null || sprite == null) return;
             main.InsertSpriteInternal(sprite, index);
         }
 
+        /// <summary>
+        /// Inserts the given sprite into the project's sprite collection and starts creating or updating its thumbnail.
+        /// </summary>
+        /// <param name="main">The main presenter that owns the project and view.</param>
+        /// <param name="sprite">The sprite definition to insert.</param>
         public static void InsertNewSprite(MainPresenter main, SpriteDefinition sprite)
         {
             if (main == null || sprite == null) return;
@@ -69,12 +85,23 @@ namespace SpriteExtractor.Presenters
             _ = CreateOrUpdateThumbnailAsync(main, sprite, key);
         }
 
+        /// <summary>
+        /// Removes the given sprite from the application's project via the provided presenter.
+        /// </summary>
+        /// <param name="main">The main presenter that performs the removal.</param>
+        /// <param name="sprite">The sprite definition to remove.</param>
         public static void RemoveSprite(MainPresenter main, SpriteDefinition sprite)
         {
             if (main == null || sprite == null) return;
             main.RemoveSpriteInternal(sprite);
         }
 
+        /// <summary>
+        /// Generates (or retrieves from cache) a thumbnail for the given sprite and updates the view with it.
+        /// </summary>
+        /// <param name="sprite">Sprite definition whose thumbnail should be generated or retrieved from cache.</param>
+        /// <param name="key">Key used to identify and update the sprite's thumbnail in the view.</param>
+        /// <returns>Completion of the thumbnail generation and view update operation.</returns>
         public static async System.Threading.Tasks.Task CreateOrUpdateThumbnailAsync(MainPresenter main, SpriteDefinition sprite, string key)
         {
             if (main == null || sprite == null || string.IsNullOrEmpty(key)) return;
@@ -114,6 +141,12 @@ namespace SpriteExtractor.Presenters
             }
         }
 
+        /// <summary>
+        /// Clears existing thumbnails and regenerates thumbnails for every sprite sequentially, then refreshes the view's sprite list.
+        /// </summary>
+        /// <remarks>
+        /// No action is taken if <paramref name="main"/> is null or if the presenter's view or project is unavailable. Thumbnails are generated sequentially to limit concurrent bitmap creation.
+        /// </remarks>
         public static async System.Threading.Tasks.Task UpdateAllThumbnailsAsync(MainPresenter main)
         {
             if (main == null) return;
