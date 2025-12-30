@@ -4,7 +4,7 @@
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <GenerateUserSecrets>true</GenerateUserSecrets>
-    
+     
   </PropertyGroup>
   
   <ItemGroup>

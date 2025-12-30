@@ -56,6 +56,13 @@ namespace SpriteExtractor.Presenters
         {
             if (view == null) return null;
 
+            if (!OperatingSystem.IsWindows())
+            {
+                MessageBox.Show("Load functionality is only supported on Windows", "Not Supported",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return null;
+            }
+
             using var dialog = new OpenFileDialog
             {
                 Filter = "Sprite Project|*.spriteproj|JSON|*.json|All Files|*.*"
