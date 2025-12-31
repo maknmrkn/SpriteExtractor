@@ -51,10 +51,21 @@ namespace SpriteExtractor.Presenters
         /// Opens a file dialog to load a sprite project, updates the view with the loaded sprites and status, and refreshes the image panel.
         /// </summary>
         /// <param name="view">The main view to update with the project's sprites and status; if null, no action is taken.</param>
-        /// <returns>The loaded <see cref="SpriteProject"/> on success, or <c>null</c> if the dialog is cancelled, an error occurs, or <paramref name="view"/> is null.</returns>
+        /// <summary>
+        /// Loads a SpriteProject from a file chosen by the user and applies it to the provided main view.
+        /// </summary>
+        /// <param name="view">The main view to update with the loaded project's sprites and status; if null the method returns null.</param>
+        /// <returns>The loaded <see cref="SpriteProject"/> on success; <c>null</c> if the dialog is cancelled, the platform is unsupported, an error occurs, or <paramref name="view"/> is null.</returns>
         public static SpriteProject LoadProject(Views.IMainView view)
         {
             if (view == null) return null;
+
+            if (!OperatingSystem.IsWindows())
+            {
+                MessageBox.Show("Load functionality is only supported on Windows", "Not Supported",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return null;
+            }
 
             using var dialog = new OpenFileDialog
             {

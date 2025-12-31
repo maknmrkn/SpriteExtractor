@@ -1,28 +1,46 @@
-using System;
 using System.Collections.Generic;
 using System.Drawing;
+using Newtonsoft.Json;
 
 namespace SpriteExtractor.Models
 {
     public class SpriteProject
     {
-        public string ProjectName { get; set; } = "New Project";
-        public string SourceImagePath { get; set; } = "";
-        public List<SpriteDefinition> Sprites { get; set; } = new();
-        public ProjectSettings Settings { get; set; } = new();
+        public int SchemaVersion { get; set; } = 1;
+        public string Name { get; set; } = "New Project";
+
+        // Backward compatibility: some code may expect ProjectName
+        [JsonIgnore]
+        public string ProjectName
+        {
+            get => Name;
+            set => Name = value;
+        }
+
+        public string SourceImagePath { get; set; }
+
+        // Lightweight inline settings so we don't depend on an external ProjectSettings file
+        public SimpleProjectSettings Settings { get; set; } = new SimpleProjectSettings();
+
+        public List<SpriteDefinition> Sprites { get; set; } = new List<SpriteDefinition>();
     }
 
-    public class SpriteDefinition
+    // Minimal settings DTO embedded here to avoid external dependency
+    public class SimpleProjectSettings
     {
-        public string Id { get; } = Guid.NewGuid().ToString();
-        public string Name { get; set; } = "Sprite";
-        public Rectangle Bounds { get; set; }
-        public Point Pivot { get; set; } = new Point(0, 0);
-        public bool IsVisible { get; set; } = true;
+        public string OutputDirectory { get; set; } = "./Output/";
+        public string OutputFormat { get; set; } = "png";
+        public bool AutoDetectEnabled { get; set; } = true;
 
-        // ← این را اضافه کن
-        public Image Thumbnail { get; set; }
+        // ذخیره رنگ به صورت ARGB int برای سریالایز شدن
+        public int HighlightColorArgb { get; set; } = Color.Yellow.ToArgb();
 
-        public override string ToString() => $"{Name} ({Bounds.X}, {Bounds.Y}, {Bounds.Width}, {Bounds.Height})";
+        // این property برای کدهایی که انتظار HighlightColor از نوع Color را دارند
+        [JsonIgnore]
+        public Color HighlightColor
+        {
+            get => Color.FromArgb(HighlightColorArgb);
+            set => HighlightColorArgb = value.ToArgb();
+        }
     }
 }
