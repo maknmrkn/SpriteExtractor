@@ -21,6 +21,12 @@ namespace SpriteExtractor.Services
             ContractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver()
         };
 
+        /// <summary>
+        /// Persists the given SpriteProject as JSON to the specified file path, ensuring every sprite has an ID and the file is written atomically.
+        /// </summary>
+        /// <param name="project">The project to persist; any sprite with a missing or empty Id will be assigned a new GUID.</param>
+        /// <param name="path">The target file path where the project JSON will be written; intermediate directories will be created if needed.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="project"/> is null or <paramref name="path"/> is null or empty.</exception>
         public static void SaveProject(SpriteProject project, string path)
         {
             if (project == null) throw new ArgumentNullException(nameof(project));
@@ -59,6 +65,16 @@ namespace SpriteExtractor.Services
             }
         }
 
+        /// <summary>
+        /// Loads a SpriteProject from the specified file path, migrating legacy JSON formats and ensuring every sprite has a stable Id.
+        /// </summary>
+        /// <param name="path">Path to the project JSON file. Must not be null or empty; if the file does not exist an empty SpriteProject is returned.</param>
+        /// <returns>The loaded SpriteProject. Returns a new empty SpriteProject when the file is missing or cannot be read.</returns>
+        /// <remarks>
+        /// If the file contains legacy JSON (or lacks sprite Ids), the method will generate missing Ids and attempt to persist the migrated project back to the same path.
+        /// Reading failures during load result in returning an empty project without throwing.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="path"/> is null, empty, or whitespace.</exception>
         public static SpriteProject LoadProject(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentNullException(nameof(path));
@@ -138,6 +154,11 @@ namespace SpriteExtractor.Services
             return project;
         }
 
+        /// <summary>
+        /// Parses legacy project JSON into a SpriteProject, accepting multiple field name casings and older structures.
+        /// </summary>
+        /// <param name="json">JSON text in an older project format to parse.</param>
+        /// <returns>A SpriteProject populated from the legacy JSON. If parsing fails or data is missing, a project with available fields (possibly empty) is returned; sprite IDs are left empty to allow generation later.</returns>
         private static SpriteProject ParseLegacyJson(string json)
         {
             var project = new SpriteProject();
